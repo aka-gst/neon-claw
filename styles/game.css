@@ -382,12 +382,35 @@ body.has-touch .frame {
 
 /* Портрет: кнопки под кадром, во всю оставшуюся высоту. */
 @media (orientation: portrait) {
+    /*
+     * Кнопки прижаты к низу и ограничены по высоте: большой палец живёт у
+     * нижнего края экрана, а колонка во всю оставшуюся высоту не становится
+     * от этого удобнее — только промахнуться легче.
+     */
     #touch {
         position: static;
         flex: 1 1 auto;
-        min-height: 34vh;
         flex-direction: row;
-        padding-bottom: env(safe-area-inset-bottom);
+        align-items: flex-end;
+        gap: 8px;
+        padding: 0 8px calc(10px + env(safe-area-inset-bottom));
+    }
+
+    .tpad,
+    .tacts {
+        height: min(38vh, 300px);
+        border-radius: 8px;
+    }
+
+    .tpad { flex: 1 1 52%; }
+
+    /* Прыжок — самая частая кнопка, поэтому он один занимает целый ряд. */
+    .tacts {
+        flex: 1 1 48%;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1.15fr;
+        grid-template-areas: 'dash attack' 'jump jump';
+        padding: 0;
     }
 
     /*
