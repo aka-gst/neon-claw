@@ -75,18 +75,32 @@ export function createInput(target = window) {
     };
 }
 
-/** Намерение игрока на один шаг симуляции. */
-export function readIntent(input) {
+/**
+ * Намерение игрока на один шаг симуляции.
+ *
+ * Клавиатура и сенсор сливаются здесь, а не в игре: миру всё равно, чем
+ * его двигают, и ни одна строчка правил не должна знать про телефон.
+ */
+export function readIntent(input, touch = null) {
+    const t = touch?.state;
+    // Забирать нажатия надо с обеих сторон и до сравнения: `||` замыкается,
+    // и оставленное в очереди сенсорное нажатие выстрелит следующим кадром.
+    const jump = input.take('jump');
+    const attack = input.take('attack');
+    const dash = input.take('dash');
+    const padJump = Boolean(touch?.take('jump'));
+    const padAttack = Boolean(touch?.take('attack'));
+    const padDash = Boolean(touch?.take('dash'));
     return {
-        left: input.held('left'),
-        right: input.held('right'),
-        up: input.held('up'),
-        down: input.held('down'),
-        jumpHeld: input.held('jump'),
-        jumpDown: input.take('jump'),
-        attackDown: input.take('attack'),
-        dashDown: input.take('dash'),
-        walk: input.held('walk'),
+        left: input.held('left') || Boolean(t?.left),
+        right: input.held('right') || Boolean(t?.right),
+        up: input.held('up') || Boolean(t?.up),
+        down: input.held('down') || Boolean(t?.down),
+        jumpHeld: input.held('jump') || Boolean(t?.jumpHeld),
+        jumpDown: jump || padJump,
+        attackDown: attack || padAttack,
+        dashDown: dash || padDash,
+        walk: input.held('walk') || Boolean(t?.walk),
     };
 }
 

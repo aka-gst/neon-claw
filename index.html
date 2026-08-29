@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>NEON CLAW</title>
 <meta name="description" content="Неоновый платформер про кибер-ниндзя: паркур по ночным крышам, катана и стражи, которые умеют блокировать.">
 <meta property="og:title" content="NEON CLAW">
@@ -13,6 +13,15 @@
 <body>
 <main class="frame">
     <canvas id="screen" width="960" height="540" tabindex="0" aria-label="Игровое поле"></canvas>
+
+    <div id="touch" hidden aria-hidden="true">
+        <div class="tpad" data-touch="pad"><span>вести пальцем · чуть-чуть — красться</span></div>
+        <div class="tacts">
+            <div class="tbtn" data-touch="dash">рывок</div>
+            <div class="tbtn" data-touch="attack">катана</div>
+            <div class="tbtn tbig" data-touch="jump">прыжок</div>
+        </div>
+    </div>
 
     <div id="overlay" data-show="title">
         <section data-screen="title">
@@ -31,6 +40,14 @@
                 <div><dt>S · ↓</dt><dd>спрыгнуть с помоста и с карниза</dd></div>
                 <div><dt>R · Esc · M</dt><dd>заново · пауза · звук</dd></div>
             </dl>
+            <dl class="keys keys-touch">
+                <div><dt>Левая половина</dt><dd>вести пальцем: чуть-чуть — красться беззвучно, до упора — бежать</dd></div>
+                <div><dt>Вести вниз</dt><dd>спрыгнуть с помоста и с карниза</dd></div>
+                <div><dt>Прыжок</dt><dd>прыжок; у стены — толчок; на карнизе — подтянуться</dd></div>
+                <div><dt>Катана</dt><dd>удар</dd></div>
+                <div><dt>Рывок</dt><dd>рывок; вместе с «вниз» — подкат</dd></div>
+            </dl>
+
             <p class="hint">
                 Прыжок берёт два тайла, когти — три. К стене прижимаются
                 клавишей в её сторону: дальше вверх ведёт зигзаг.

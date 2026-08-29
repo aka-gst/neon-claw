@@ -24,6 +24,11 @@ html, body {
 body {
     display: grid;
     place-items: center;
+    /* Телефон не должен пытаться листать и увеличивать игру. */
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
     background: radial-gradient(circle at 50% 30%, #0d1030 0%, #05060f 55%, #030409 100%);
     color: var(--text);
     font-family: var(--font);
@@ -150,6 +155,11 @@ h2 {
     border-bottom: 1px solid rgba(34, 232, 255, 0.12);
 }
 
+/* На телефоне список клавиш — чистый шум: клавиатуры нет. И наоборот. */
+.keys-touch { display: none; }
+body.has-touch .keys:not(.keys-touch) { display: none; }
+body.has-touch .keys-touch { display: grid; }
+
 .keys dt {
     color: var(--cyan);
     letter-spacing: 0.1em;
@@ -260,4 +270,153 @@ button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
+}
+
+
+/* ------------------------------------------------- сенсорное управление */
+
+#touch {
+    position: absolute;
+    inset: 0;
+    display: none;
+    touch-action: none;
+    z-index: 2;
+}
+
+body.has-touch #touch { display: flex; }
+body.has-touch #screen { touch-action: none; }
+
+/*
+ * В портрете кадр 16:9 занимает верх экрана, а всё, что ниже, — пустота.
+ * Туда и уходят кнопки: они не закрывают игру, а живут в месте, которое
+ * иначе просто чернело бы.
+ */
+body.has-touch {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: env(safe-area-inset-top);
+}
+
+body.has-touch .frame {
+    width: 100vw;
+    border-left: none;
+    border-right: none;
+    flex: 0 0 auto;
+}
+
+.tpad,
+.tbtn {
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(34, 232, 255, 0.28);
+    background: rgba(10, 20, 40, 0.4);
+    color: rgba(207, 230, 255, 0.5);
+    font-family: var(--font);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    touch-action: none;
+    cursor: pointer;
+}
+
+.tpad {
+    flex: 1 1 55%;
+    text-align: center;
+    padding: 0 6%;
+    line-height: 1.5;
+}
+
+.tacts {
+    flex: 1 1 45%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: 'dash jump' 'attack jump';
+    gap: 6px;
+    padding: 6px;
+}
+
+.tbtn[data-touch='dash'] { grid-area: dash; }
+.tbtn[data-touch='attack'] { grid-area: attack; }
+.tbtn.tbig { grid-area: jump; border-color: rgba(255, 45, 149, 0.42); }
+
+.tbtn.is-down,
+.tpad:active {
+    background: rgba(34, 232, 255, 0.18);
+    border-color: var(--cyan);
+    color: #fff;
+}
+
+.tbtn.tbig.is-down {
+    background: rgba(255, 45, 149, 0.22);
+    border-color: var(--magenta);
+}
+
+/* Портрет: кнопки под кадром, во всю оставшуюся высоту. */
+@media (orientation: portrait) {
+    #touch {
+        position: static;
+        flex: 1 1 auto;
+        min-height: 34vh;
+        flex-direction: row;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /*
+     * Меню в портрете разворачивается на весь экран, а не ютится в полоске
+     * кадра: под кадром всё равно наши кнопки, и отдавать меню 211 пикселей
+     * высоты, когда есть 812, — значит нарисовать нечитаемую мелочь.
+     */
+    body.has-touch #overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 3;
+        font-size: clamp(10px, 1.7vh, 16px);
+        padding: calc(1em + env(safe-area-inset-top)) 1.2em
+                 calc(1em + env(safe-area-inset-bottom));
+    }
+
+    body.has-touch #overlay section { max-width: 100%; }
+    body.has-touch .keys > div { grid-template-columns: 7.5em 1fr; }
+}
+
+/*
+ * Ландшафт: свободного места нет, поэтому кнопки ложатся поверх кадра по
+ * углам и становятся полупрозрачными. Середина остаётся чистой — там
+ * происходит игра, и закрывать её пальцами нельзя.
+ */
+@media (orientation: landscape) {
+    body.has-touch .frame {
+        width: min(100vw, calc(100vh * 16 / 9));
+        margin: auto;
+    }
+
+    #touch {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    .tpad,
+    .tacts {
+        pointer-events: auto;
+        position: absolute;
+        bottom: 2vh;
+        opacity: 0.72;
+    }
+
+    .tpad {
+        left: 2vw;
+        width: 34vw;
+        height: 30vh;
+        border-radius: 6px;
+    }
+
+    .tacts {
+        right: 2vw;
+        width: 30vw;
+        height: 30vh;
+        padding: 0;
+    }
 }

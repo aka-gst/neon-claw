@@ -11,6 +11,7 @@ import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
+import { createTouch, hasTouch } from './touch.js';
 import { createAudio } from './audio.js';
 import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
 import { loadTileset, loadBackdrop } from './assets.js';
@@ -22,6 +23,15 @@ const overlay = document.getElementById('overlay');
 const input = createInput(window);
 const audio = createAudio();
 const renderer = createRenderer(canvas);
+
+// Сенсорные кнопки появляются только там, где есть сенсор: на планшете с
+// клавиатурой и на узком окне рабочего стола они мешают, а не помогают.
+const touchRoot = document.getElementById('touch');
+const touch = hasTouch() ? createTouch(touchRoot) : null;
+if (touch) {
+    touchRoot.hidden = false;
+    document.body.classList.add('has-touch');
+}
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -120,7 +130,7 @@ function frame(now) {
         accumulator += elapsed;
         let steps = 0;
         while (accumulator >= STEP && steps < 8) {
-            stepWorld(world, readIntent(input), STEP);
+            stepWorld(world, readIntent(input, touch), STEP);
             accumulator -= STEP;
             steps += 1;
         }
@@ -171,8 +181,12 @@ for (const button of document.querySelectorAll('[data-mode]')) {
 }
 
 window.addEventListener('blur', () => {
+    touch?.release();
     if (screen === 'none') show('paused');
 });
+
+// Первое касание разблокирует звук: браузер не даст его иначе.
+window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
 
 /**
  * Отладочный доступ. Игра идёт на requestAnimationFrame, а он замирает в
@@ -185,6 +199,7 @@ window.NEON = {
     get camera() { return camera; },
     renderer,
     input,
+    touch,
     restart,
     setMode,
     setLevel,
