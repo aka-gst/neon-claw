@@ -10,7 +10,7 @@
  * из двух таймеров, без единой строчки про «сложность».
  */
 
-import { ENFORCER, NOISE } from './tuning.js';
+import { ENFORCER, NOISE, LIGHT } from './tuning.js';
 import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
 import { solidAtPoint } from './level.js';
@@ -188,7 +188,10 @@ function sees(e, player, level) {
     if (player.state === 'dead') return false;
     const dx = player.body.x - e.body.x;
     const dy = player.body.y - e.body.y;
-    if (Math.abs(dx) >= ENFORCER.sight) return false;
+    // Тьма — ресурс: в ней стража подпускают вчетверо ближе.
+    const lit = player.lit ?? 1;
+    const reach = ENFORCER.sight * (LIGHT.darkSight + (1 - LIGHT.darkSight) * lit);
+    if (Math.abs(dx) >= reach) return false;
     // Заметив однажды, страж следит и за спиной: он развернулся.
     if (e.alert > 0) {
         return Math.abs(dy) < 70 && !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
@@ -206,11 +209,11 @@ function sees(e, player, level) {
  * Границы конуса для отрисовки. Картинка обязана совпадать с правилом,
  * поэтому конус укорачивается о ближайшую стену так же, как и взгляд.
  */
-export function sightCone(e, level) {
+export function sightCone(e, level, lit = 1) {
     const eye = { x: e.body.x, y: e.body.y - e.body.h * 0.78 };
-    let far = ENFORCER.sight;
+    let far = ENFORCER.sight * (LIGHT.darkSight + (1 - LIGHT.darkSight) * lit);
     if (level) {
-        for (let d = 8; d <= ENFORCER.sight; d += 8) {
+        for (let d = 8; d <= far; d += 8) {
             if (solidAtPoint(level, eye.x + e.facing * d, eye.y)) { far = d - 8; break; }
         }
     }

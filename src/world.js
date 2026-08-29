@@ -6,7 +6,7 @@
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE, BOW } from './tuning.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE, BOW, LIGHT } from './tuning.js';
 import { parseLevel, levelPixelHeight, solidAtPoint } from './level.js';
 import { overlaps, bodyRect } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
@@ -33,6 +33,8 @@ export function createWorld(rows) {
         /** Стрелы в полёте и воткнувшиеся — вторые подбираются обратно. */
         arrows: [],
         stuck: [],
+        /** Фонари: погасшие оживают сами. */
+        lights: level.lights.map((l) => ({ ...l, r: LIGHT.radius, on: true, out: 0 })),
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
         events: [],
         score: 0,
@@ -204,6 +206,68 @@ function pickLoot(world, dt) {
     }
 }
 
+/* -------------------------------------------------------------------- свет */
+
+/**
+ * Насколько герой освещён: 0 — тьма, 1 — прямо под фонарём.
+ *
+ * Берётся максимум по источникам, а не сумма: два далёких фонаря не
+ * должны складываться в яркое пятно там, где глазом видно полумрак.
+ * И свет держат стены — в отличие от шума. Именно этим укрытие от
+ * взгляда отличается от укрытия от слуха.
+ */
+function illumination(world, x, y) {
+    let best = 0;
+    for (const lamp of world.lights) {
+        if (!lamp.on) continue;
+        const dist = Math.hypot(x - lamp.x, y - lamp.y);
+        if (dist >= lamp.r) continue;
+        const k = 1 - dist / lamp.r;
+        if (k <= best) continue;
+        if (blockedLine(world.level, lamp.x, lamp.y, x, y)) continue;
+        best = k;
+    }
+    return best;
+}
+
+/** Есть ли камень между двумя точками. Шаг в треть тайла — стены толще. */
+function blockedLine(level, ax, ay, bx, by) {
+    const steps = Math.ceil(Math.hypot(bx - ax, by - ay) / 8);
+    for (let i = 1; i < steps; i += 1) {
+        const t = i / steps;
+        if (solidAtPoint(level, ax + (bx - ax) * t, ay + (by - ay) * t)) return true;
+    }
+    return false;
+}
+
+function stepLights(world, dt) {
+    for (const lamp of world.lights) {
+        if (lamp.on) continue;
+        lamp.out -= dt;
+        if (lamp.out <= 0) {
+            lamp.on = true;
+            world.events.push('relight');
+        }
+    }
+    const p = world.player;
+    p.lit = illumination(world, p.body.x, p.body.y - p.body.h * 0.55);
+}
+
+/** Стрела гасит фонарь. Тьму можно не искать, а делать. */
+function douse(world, x, y) {
+    for (const lamp of world.lights) {
+        if (!lamp.on) continue;
+        if (Math.hypot(x - lamp.x, y - lamp.y) > TILE) continue;
+        lamp.on = false;
+        lamp.out = LIGHT.relight;
+        spark(world, lamp.x, lamp.y, 12, '#ffc857', 160, 0.4);
+        world.events.push('douse');
+        say(world, 'Фонарь погас. Ненадолго.', 1.6);
+        return true;
+    }
+    return false;
+}
+
 /* --------------------------------------------------------------------- лук */
 
 function fireArrow(world) {
@@ -248,6 +312,13 @@ function stepArrows(world, dt) {
         for (let i = 0; i < steps && !done; i += 1) {
             a.x += (a.vx * dt) / steps;
             a.y += (a.vy * dt) / steps;
+
+            if (douse(world, a.x, a.y)) {
+                world.stuck.push({ x: a.x, y: a.y, angle: Math.atan2(a.vy, a.vx) });
+                emitNoise(world, a.x, a.y, BOW.noise * 0.5, 'arrow');
+                done = true;
+                break;
+            }
 
             if (solidAtPoint(world.level, a.x, a.y)) {
                 world.stuck.push({ x: a.x, y: a.y, angle: Math.atan2(a.vy, a.vx) });
@@ -354,6 +425,10 @@ function restartFromCheckpoint(world) {
     p.bow.release = null;
     world.arrows.length = 0;
     world.stuck.length = 0;
+    for (const lamp of world.lights) {
+        lamp.on = true;
+        lamp.out = 0;
+    }
     for (const e of world.enemies) reviveEnforcer(e, RULES.enemy);
     world.events.push('retry');
 }
@@ -402,6 +477,7 @@ export function stepWorld(world, intent, dt) {
     world.elapsed += dt;
 
     const p = world.player;
+    stepLights(world, dt);
     updatePlayer(p, world.level, intent, dt);
     if (p.sfx.length) {
         for (const cue of p.sfx) {

@@ -53,6 +53,8 @@ export function createPlayer(spawn) {
         climb: 0,
 
         anim: { run: 0, land: 0, swing: 0, hurtFlash: 0, dash: 0 },
+        /** Освещённость: 0 — тьма, 1 — под фонарём. Считает мир. */
+        lit: 1,
         /** После снятия сверху приземление беззвучно: иначе оно не тихое. */
         silentLand: 0,
         sfx: [],

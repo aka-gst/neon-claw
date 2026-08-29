@@ -11,7 +11,7 @@
  * а точное попадание — здесь всё и должно быть светящимся контуром.
  */
 
-import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW } from './tuning.js';
+import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW, LIGHT } from './tuning.js';
 import { SOLID, ONEWAY, tileAt, levelPixelHeight } from './level.js';
 import { attackRect } from './player.js';
 import { enforcerAttackRect, sightCone, moodOf } from './enemy.js';
@@ -503,10 +503,43 @@ function drawEnforcer(ctx, e, glowPass, time) {
  * картинка, которая врёт про правило, хуже отсутствующей: игрок построит
  * обход по ней и не поймёт, почему его увидели.
  */
+/**
+ * Пятна света. Рисуются ПОД геометрией: свет лежит на полу, а не поверх
+ * стен. Погасший фонарь остаётся видимым тёмным кольцом — игрок должен
+ * помнить, где он был, чтобы не выйти на свет, когда тот вернётся.
+ */
+function drawLights(ctx, world, glowPass) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    for (const lamp of world.lights) {
+        if (lamp.on && !glowPass) {
+            const pool = ctx.createRadialGradient(lamp.x, lamp.y, 2, lamp.x, lamp.y, lamp.r);
+            pool.addColorStop(0, 'rgba(255, 200, 87, 0.20)');
+            pool.addColorStop(0.55, 'rgba(255, 200, 87, 0.07)');
+            pool.addColorStop(1, 'rgba(255, 200, 87, 0)');
+            ctx.fillStyle = pool;
+            ctx.beginPath();
+            ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.strokeStyle = lamp.on ? '#ffc857' : 'rgba(255, 200, 87, 0.28)';
+        ctx.lineWidth = lw(lamp.on ? 2.2 : 1.4);
+        ctx.beginPath();
+        ctx.arc(lamp.x, lamp.y, lamp.on ? 3.5 : 3, 0, Math.PI * 2);
+        ctx.stroke();
+        if (!lamp.on && !glowPass) {
+            ctx.strokeStyle = 'rgba(255, 200, 87, 0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+}
+
 function drawCones(ctx, world, glowPass) {
     for (const e of world.enemies) {
         if (e.state === 'dead') continue;
-        const { eye, far, near, half, facing } = sightCone(e, world.level);
+        const { eye, far, near, half, facing } = sightCone(e, world.level, world.player.lit);
         const tip = eye.x + facing * far;
         const mood = moodOf(e);
         const hot = mood === 'alert';
@@ -861,6 +894,7 @@ function drawSparks(ctx, world, glowPass) {
 }
 
 function paintWorld(ctx, world, cam, glowPass, tiles) {
+    drawLights(ctx, world, glowPass);
     drawTiles(ctx, world, cam, glowPass, tiles);
     drawCones(ctx, world, glowPass);
     drawCheckpoints(ctx, world, glowPass, world.time);
@@ -870,7 +904,14 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
 
     const p = world.player;
     const blink = p.invuln > 0 && Math.floor(p.invuln * 22) % 2 === 0;
-    if (!blink && p.state !== 'dead') drawHero(ctx, p, glowPass, world.time);
+    // В тени герой тусклее. Не настолько, чтобы потеряться, — ровно
+    // настолько, чтобы укрытие ощущалось укрытием, а не цифрой на экране.
+    const shade = 0.72 + 0.28 * (p.lit ?? 1);
+    if (!blink && p.state !== 'dead') {
+        ctx.globalAlpha = shade;
+        drawHero(ctx, p, glowPass, world.time);
+        ctx.globalAlpha = 1;
+    }
     else if (p.state === 'dead') {
         ctx.globalAlpha = 0.4;
         drawHero(ctx, p, glowPass, world.time);
@@ -900,6 +941,28 @@ function drawHud(ctx, world) {
         ctx.lineTo(x + 10, 30);
         ctx.stroke();
     }
+
+    /*
+     * Камень видимости. Прямая цитата из Thief, и по делу: освещённость
+     * решает, с какого расстояния тебя заметят, а на глаз она не читается —
+     * полумрак от тьмы отличается плохо. Прибор нужен.
+     */
+    const lit = world.player.lit ?? 1;
+    const gemX = 150;
+    const gemY = 26;
+    ctx.save();
+    ctx.translate(gemX, gemY);
+    ctx.beginPath();
+    ctx.moveTo(0, -7); ctx.lineTo(6, 0); ctx.lineTo(0, 7); ctx.lineTo(-6, 0);
+    ctx.closePath();
+    ctx.fillStyle = lit < LIGHT.hidden
+        ? `rgba(77, 255, 184, ${0.25 + lit})`
+        : `rgba(255, ${Math.round(200 - lit * 140)}, 87, ${0.3 + lit * 0.6})`;
+    ctx.fill();
+    ctx.strokeStyle = lit < LIGHT.hidden ? 'rgba(77, 255, 184, 0.8)' : 'rgba(255, 200, 87, 0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
 
     // Колчан рядом с жизнями: и то и другое кончается, и знать надо заранее.
     for (let i = 0; i < world.player.bow.arrows; i += 1) {
