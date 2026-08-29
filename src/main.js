@@ -171,7 +171,7 @@ window.NEON = {
     advance(keys = {}, seconds = 1) {
         const base = {
             left: false, right: false, up: false, down: false,
-            jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false,
+            jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false, walk: false,
         };
         const steps = Math.max(1, Math.round(seconds / STEP));
         for (let i = 0; i < steps; i += 1) {

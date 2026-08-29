@@ -13,8 +13,10 @@ const BINDINGS = {
     up: ['ArrowUp', 'KeyW'],
     down: ['ArrowDown', 'KeyS'],
     jump: ['Space', 'ArrowUp', 'KeyW'],
-    attack: ['KeyJ', 'KeyX', 'ControlLeft', 'ControlRight'],
+    attack: ['KeyJ', 'KeyX'],
     dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
+    // Ctrl под «красться» — идиома Thief и Splinter Cell, руки её знают.
+    walk: ['ControlLeft', 'ControlRight'],
     pause: ['Escape', 'KeyP'],
     restart: ['KeyR'],
 };
@@ -84,6 +86,7 @@ export function readIntent(input) {
         jumpDown: input.take('jump'),
         attackDown: input.take('attack'),
         dashDown: input.take('dash'),
+        walk: input.held('walk'),
     };
 }
 

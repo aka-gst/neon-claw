@@ -10,7 +10,7 @@
  * из двух таймеров, без единой строчки про «сложность».
  */
 
-import { ENFORCER } from './tuning.js';
+import { ENFORCER, NOISE } from './tuning.js';
 import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
 import { solidAtPoint } from './level.js';
@@ -28,6 +28,9 @@ export function createEnforcer(spawn, index = 0, rules = null) {
         /** Сколько ещё помнит игрока после потери из виду. */
         alert: 0,
         cooldown: 0,
+        /** Куда идти проверять шум. null — ничего не слышал. */
+        suspect: null,
+        scan: 0,
         guardReady: 0,
         hitstop: 0,
         flash: 0,
@@ -38,6 +41,40 @@ export function createEnforcer(spawn, index = 0, rules = null) {
 
 export const isSwinging = (e) => e.state === 'active';
 export const isGuarding = (e) => e.state === 'guard';
+
+/** Настроение стража одним словом — для значка над головой и цвета конуса. */
+export function moodOf(e) {
+    if (e.state === 'dead') return 'dead';
+    if (e.alert > 0 || e.state === 'chase' || OPEN.has(e.state) || e.state === 'guard') return 'alert';
+    if (e.state === 'suspect') return 'suspect';
+    return 'calm';
+}
+
+const OPEN = new Set(['windup', 'active', 'recover']);
+
+/**
+ * Услышанный шум. Стены его не держат — в этом весь смысл: зрение
+ * перекрывается геометрией, слух нет. Возвращает true только на свежем
+ * переполохе, чтобы мир не звенел значком на каждом шаге игрока.
+ */
+export function hearNoise(e, x, y, radius) {
+    if (e.state === 'dead' || radius <= 0) return false;
+    const d = Math.hypot(x - e.body.x, y - (e.body.y - e.body.h / 2));
+    if (d > radius) return false;
+
+    // Тот, кто уже дерётся или гонится, шумом не удивишь — только продлишь память.
+    if (e.state === 'chase' || e.state === 'guard' || OPEN.has(e.state)) {
+        e.alert = ENFORCER.memory;
+        return false;
+    }
+
+    const fresh = e.state !== 'suspect';
+    e.state = 'suspect';
+    e.suspect = { x, y };
+    e.t = NOISE.investigate;
+    e.scan = 0.55;
+    return fresh;
+}
 
 export function enforcerAttackRect(e) {
     const b = e.body;
@@ -62,6 +99,8 @@ export function reviveEnforcer(e, rules = null) {
     e.hitstop = 0;
     e.flash = 0;
     e.facing = -1;
+    e.suspect = null;
+    e.scan = 0;
     e.body.x = e.home.x;
     e.body.y = e.home.y;
     e.body.vx = 0;
@@ -224,6 +263,36 @@ export function updateEnforcer(e, level, player, dt) {
                 e.state = 'chase';
                 e.alert = ENFORCER.memory;
                 event = 'spot';
+            }
+            break;
+        }
+
+        case 'suspect': {
+            // Идёт на звук, а дойдя — осматривается. Ровно столько ума,
+            // сколько нужно, чтобы шум был решением игрока, а не фоном.
+            if (sees(e, player, level)) {
+                e.state = 'chase';
+                e.alert = ENFORCER.memory;
+                event = 'spot';
+                break;
+            }
+            e.t -= dt;
+            const dx = (e.suspect?.x ?? b.x) - b.x;
+            if (Math.abs(dx) > 12 && e.t > 0.9) {
+                if (b.onGround && edgeAhead(e, level) && Math.sign(dx) === e.facing) brake(e, dt);
+                else walk(e, Math.sign(dx) || e.facing, ENFORCER.patrolSpeed * 1.35, dt);
+            } else {
+                brake(e, dt);
+                e.scan -= dt;
+                if (e.scan <= 0) {
+                    e.facing = -e.facing;
+                    e.scan = 0.7;
+                }
+            }
+            e.anim.walk += Math.abs(b.vx) * dt * 0.1;
+            if (e.t <= 0) {
+                e.state = 'patrol';
+                e.suspect = null;
             }
             break;
         }

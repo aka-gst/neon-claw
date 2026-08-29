@@ -18,7 +18,7 @@
  * рывок — четыре тайла провала, подкат — щель в один тайл.
  */
 
-import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, STEP } from './tuning.js';
+import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, NOISE, STEP } from './tuning.js';
 import { makeBody, moveX, moveY, findLedge, wallSide, headroom } from './physics.js';
 
 export function createPlayer(spawn) {
@@ -98,7 +98,8 @@ function horizontal(p, intent, dt) {
     const b = p.body;
     const dir = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
     const swinging = p.attack.phase !== 'none' && b.onGround;
-    const top = PLAYER.runSpeed * (swinging ? 0.35 : 1);
+    const base = intent.walk && b.onGround ? PLAYER.walkSpeed : PLAYER.runSpeed;
+    const top = base * (swinging ? 0.35 : 1);
 
     // Отдача и толчок от стены — это не бег, а бросок: пока они длятся,
     // ни разгон, ни трение к ним не применяются.

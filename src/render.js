@@ -14,7 +14,7 @@
 import { TILE, VIEW, SWORD, ENFORCER, LEDGE } from './tuning.js';
 import { SOLID, ONEWAY, tileAt } from './level.js';
 import { attackRect } from './player.js';
-import { enforcerAttackRect, sightCone } from './enemy.js';
+import { enforcerAttackRect, sightCone, moodOf } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
 import { variantAt } from './assets.js';
 import { formatTime } from './results.js';
@@ -474,11 +474,15 @@ function drawCones(ctx, world, glowPass) {
         if (e.state === 'dead') continue;
         const { eye, far, near, half, facing } = sightCone(e, world.level);
         const tip = eye.x + facing * far;
-        const hot = e.alert > 0;
+        const mood = moodOf(e);
+        const hot = mood === 'alert';
+        const warm = mood === 'suspect';
 
         if (!glowPass) {
             const grad = ctx.createLinearGradient(eye.x, eye.y, tip, eye.y);
-            grad.addColorStop(0, hot ? 'rgba(255, 59, 92, 0.22)' : 'rgba(125, 252, 255, 0.13)');
+            grad.addColorStop(0, hot
+                ? 'rgba(255, 59, 92, 0.22)'
+                : warm ? 'rgba(255, 200, 87, 0.18)' : 'rgba(125, 252, 255, 0.13)');
             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = grad;
             ctx.beginPath();
@@ -490,7 +494,9 @@ function drawCones(ctx, world, glowPass) {
             ctx.fill();
         }
 
-        ctx.strokeStyle = hot ? 'rgba(255, 59, 92, 0.55)' : 'rgba(125, 252, 255, 0.3)';
+        ctx.strokeStyle = hot
+            ? 'rgba(255, 59, 92, 0.55)'
+            : warm ? 'rgba(255, 200, 87, 0.45)' : 'rgba(125, 252, 255, 0.3)';
         ctx.lineWidth = glowPass ? 1.8 : 0.9;
         ctx.beginPath();
         ctx.moveTo(eye.x, eye.y - near);
@@ -498,6 +504,54 @@ function drawCones(ctx, world, glowPass) {
         ctx.moveTo(eye.x, eye.y + near);
         ctx.lineTo(tip, eye.y + half);
         ctx.stroke();
+    }
+}
+
+/**
+ * Круги шума. Слух стражей невидим, значит его надо показать: наказание
+ * за бег, которого не видно, читается игроком как случайность.
+ */
+function drawNoises(ctx, world, glowPass) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    for (const n of world.noises) {
+        const k = n.t / n.life;
+        const color = n.kind === 'clang' || n.kind === 'death' ? '#ff3b5c'
+            : n.kind === 'quiet' ? '#4dffb8' : '#7dfcff';
+        ctx.globalAlpha = (1 - k) * 0.5;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lw(1.4);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r * (0.35 + k * 0.65), 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Значок настроения: «?» — услышал, «!» — увидел. Словарь Tenchu и MGS. */
+function drawMoods(ctx, world, glowPass, time) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    for (const e of world.enemies) {
+        const mood = moodOf(e);
+        if (mood !== 'suspect' && mood !== 'alert') continue;
+        const x = e.body.x;
+        const y = e.body.y - e.body.h - 12 - Math.sin(time * 6) * 1.5;
+        ctx.strokeStyle = mood === 'alert' ? '#ff3b5c' : '#ffc857';
+        ctx.lineWidth = lw(2);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        if (mood === 'alert') {
+            ctx.moveTo(x, y - 6);
+            ctx.lineTo(x, y + 1);
+        } else {
+            ctx.arc(x, y - 3.5, 3, Math.PI * 0.9, Math.PI * 2.25);
+            ctx.moveTo(x + 0.4, y - 0.6);
+            ctx.lineTo(x, y + 1);
+        }
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y + 4.5, 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
     }
 }
 
@@ -711,6 +765,8 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
         ctx.globalAlpha = 1;
     }
 
+    drawNoises(ctx, world, glowPass);
+    drawMoods(ctx, world, glowPass, world.time);
     drawSparks(ctx, world, glowPass);
 }
 

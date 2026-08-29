@@ -6,12 +6,13 @@
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA } from './tuning.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE } from './tuning.js';
 import { parseLevel, levelPixelHeight } from './level.js';
 import { overlaps, bodyRect } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
 import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
+    hearNoise,
 } from './enemy.js';
 import { getMode, strikeKind, DEFAULT_MODE } from './combat.js';
 
@@ -28,6 +29,9 @@ export function createWorld(rows, modeId = DEFAULT_MODE) {
         enemies: level.enemies.map((e, i) => createEnforcer(e, i, mode.enemy)),
         loot: level.loot.map((l, i) => ({ ...l, id: i, taken: false, bob: i * 0.7, vx: 0, vy: 0 })),
         sparks: [],
+        /** Круги шума — то, что игрок видит вместо слуха стражей. */
+        noises: [],
+        noiseTimer: 0,
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
         events: [],
         score: 0,
@@ -67,6 +71,36 @@ function spark(world, x, y, count, color, spread = 120, life = 0.35) {
     }
 }
 
+/**
+ * Шум. Стены его не держат: зрение перекрывается геометрией, слух нет.
+ * Круг рисуется всегда — игрок обязан видеть, что именно он сейчас издал,
+ * иначе наказание за бег читается как случайность.
+ */
+function emitNoise(world, x, y, radius, kind = 'move') {
+    if (radius <= 0) return;
+    world.noises.push({ x, y, r: radius, t: 0, life: 0.5, kind });
+    let woke = false;
+    for (const e of world.enemies) {
+        if (hearNoise(e, x, y, radius)) woke = true;
+    }
+    if (woke) world.events.push('heard');
+}
+
+/** Длящийся шум: бег, подкат, скрежет когтей. Крадущийся шаг — ноль. */
+function continuousNoise(p) {
+    if (p.state === 'dash') return NOISE.dash;
+    if (p.state === 'slide') return NOISE.slide;
+    if (p.state === 'wall') return NOISE.scrape;
+    if (p.body.onGround && Math.abs(p.body.vx) > PLAYER.walkSpeed + 12) return NOISE.run;
+    return 0;
+}
+
+const POINT_NOISE = {
+    land: NOISE.land,
+    walljump: NOISE.scrape * 1.5,
+    jump: NOISE.run * 0.5,
+};
+
 function say(world, text, seconds = 2.4) {
     world.notice = { text, t: seconds };
 }
@@ -97,6 +131,7 @@ function playerAttacks(world) {
             world.events.push('takedown');
             world.score += 150;
             world.takedowns += 1;
+            emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.takedown, 'quiet');
             p.hitstop = SWORD.hitstop * 1.4;
             world.shake = Math.max(world.shake, 5);
             say(world, kind === 'above' ? 'Сверху. Он даже не обернулся.' : 'Со спины. Чисто.', 1.4);
@@ -105,6 +140,8 @@ function playerAttacks(world) {
             // потерянный темп и ни единицы урона.
             spark(world, mid.x, mid.y, 12, '#9ad8ff', 200, 0.3);
             world.events.push('clang');
+            // Звон слышно дальше всего: это провал, и он должен стоить дорого.
+            emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.clang, 'clang');
             pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, 3);
@@ -119,6 +156,7 @@ function playerAttacks(world) {
             if (!p.body.onGround) p.body.vy = Math.min(p.body.vy, -SWORD.airLift);
             if (result === 'dead') {
                 world.score += 100;
+                emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.death, 'death');
                 spark(world, e.body.x, e.body.y - e.body.h / 2, 22, '#ffc857', 300, 0.6);
             }
         }
@@ -247,6 +285,9 @@ export function stepWorld(world, intent, dt) {
 
     for (const item of world.loot) item.bob += dt;
 
+    for (const n of world.noises) n.t += dt;
+    world.noises = world.noises.filter((n) => n.t < n.life);
+
     if (world.phase !== 'play') return;
 
     // Пауза после смерти. Мир стоит, искры летят: игрок должен увидеть,
@@ -262,8 +303,23 @@ export function stepWorld(world, intent, dt) {
     const p = world.player;
     updatePlayer(p, world.level, intent, dt);
     if (p.sfx.length) {
+        for (const cue of p.sfx) {
+            const radius = POINT_NOISE[cue];
+            if (radius) emitNoise(world, p.body.x, p.body.y, radius, cue);
+        }
         world.events.push(...p.sfx);
         p.sfx.length = 0;
+    }
+
+    const running = continuousNoise(p);
+    if (running > 0) {
+        world.noiseTimer -= dt;
+        if (world.noiseTimer <= 0) {
+            emitNoise(world, p.body.x, p.body.y - p.body.h / 2, running, 'move');
+            world.noiseTimer = NOISE.interval;
+        }
+    } else {
+        world.noiseTimer = 0;
     }
     for (const e of world.enemies) updateEnforcer(e, world.level, p, dt);
 
