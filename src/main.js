@@ -83,6 +83,17 @@ loadBackdrop(district).then((art) => { renderer.art = art; });
 let camera = createCamera(world);
 let screen = 'title';
 
+/** Итоги прошлых прогонов прямо на карточке уровня. */
+function paintResults() {
+    for (const slot of document.querySelectorAll('[data-best]')) {
+        const best = resultFor(slot.dataset.best);
+        slot.textContent = best
+            ? `лучшее ${formatTime(best.time)} · попыток ${best.attempts}`
+                + (best.takedowns ? ` · тихо ${best.takedowns}` : '')
+            : '';
+    }
+}
+
 /** Уровень тоже переключается на ходу: правила надо сравнивать на обоих. */
 function setLevel(next) {
     if (!LEVELS[next]) return;
@@ -90,7 +101,7 @@ function setLevel(next) {
     for (const el of document.querySelectorAll('[data-level]')) {
         el.classList.toggle('is-on', el.dataset.level === levelId);
     }
-    paintModeResults();
+    paintResults();
     restart();
 }
 
@@ -117,7 +128,7 @@ function show(name) {
         document.getElementById('won-best').textContent = best.time < world.elapsed - 0.5
             ? `лучший проход в этом режиме — ${formatTime(best.time)}`
             : 'это лучший проход в режиме';
-        paintModeResults();
+        paintResults();
     }
     if (name === 'lost') {
         document.getElementById('lost-score').textContent = String(world.score);
@@ -258,28 +269,45 @@ window.NEON = {
     },
 };
 
-const levelsBox = document.getElementById('levels');
-LEVEL_ORDER.forEach((id) => {
-    const level = LEVELS[id];
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'mode level';
-    button.dataset.level = id;
-    button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`
-        + `<em data-best="${id}"></em>`;
-    button.addEventListener('click', () => {
-        audio.unlock();
-        setLevel(id);
-        canvas.focus();
+/**
+ * Запуск. Обёрнут намеренно: ошибка на верхнем уровне модуля обрывает его
+ * до цикла отрисовки, и игрок видит чёрный прямоугольник без единого слова.
+ * Молчаливый отказ — худшее, что может случиться на живом сайте, поэтому
+ * сломанный запуск обязан сказать о себе.
+ */
+try {
+    const levelsBox = document.getElementById('levels');
+    LEVEL_ORDER.forEach((id) => {
+        const level = LEVELS[id];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'mode level';
+        button.dataset.level = id;
+        button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`
+            + `<em data-best="${id}"></em>`;
+        button.addEventListener('click', () => {
+            audio.unlock();
+            setLevel(id);
+            canvas.focus();
+        });
+        levelsBox.append(button);
     });
-    levelsBox.append(button);
-});
-for (const el of document.querySelectorAll('[data-level]')) {
-    el.classList.toggle('is-on', el.dataset.level === levelId);
+    for (const el of document.querySelectorAll('[data-level]')) {
+        el.classList.toggle('is-on', el.dataset.level === levelId);
+    }
+
+    paintResults();
+    show('title');
+    requestAnimationFrame(frame);
+
+} catch (error) {
+    overlay.dataset.show = 'title';
+    overlay.innerHTML = '<section style="display:block">'
+        + '<h2>НЕ ЗАПУСКАЕТСЯ</h2>'
+        + '<p class="lead">Игра не смогла стартовать. Сообщение ниже поможет починить.</p>'
+        + `<p class="hint">${String(error && error.message ? error.message : error)}</p>`
+        + '</section>';
+    throw error;
 }
 
-paintModeResults();
-show('title');
-requestAnimationFrame(frame);
-
-export { world, renderer, VIEW };
+export { renderer, VIEW };
