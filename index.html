@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON CLAW</title>
+<meta name="description" content="Неоновый платформер про кибер-пирата: сабля, зацеп за карниз и корсары, которые умеют блокировать.">
+<link rel="stylesheet" href="./styles/game.css">
+</head>
+<body>
+<main class="frame">
+    <canvas id="screen" width="960" height="540" tabindex="0" aria-label="Игровое поле"></canvas>
+
+    <div id="overlay" data-show="title">
+        <section data-screen="title">
+            <p class="kicker">вертикальный срез</p>
+            <h1>NEON<span>CLAW</span></h1>
+            <p class="lead">
+                Порт Керуб, нижние доки. Кибер-корсары держат причал,
+                а ты пришёл за ядрами — и за тем, что плохо лежит.
+            </p>
+            <dl class="keys">
+                <div><dt>A D · ← →</dt><dd>бег</dd></div>
+                <div><dt>Space · ↑</dt><dd>прыжок, подтянуться на карниз</dd></div>
+                <div><dt>J · X</dt><dd>сабля</dd></div>
+                <div><dt>S · ↓</dt><dd>спрыгнуть с помоста и с карниза</dd></div>
+                <div><dt>R · Esc · M</dt><dd>заново · пауза · звук</dd></div>
+            </dl>
+            <p class="hint">
+                Прыжок берёт два тайла. Всё, что выше, — ловится руками за кромку.
+            </p>
+            <button type="button" data-action="start">В ДОКИ</button>
+        </section>
+
+        <section data-screen="paused">
+            <h2>ПАУЗА</h2>
+            <p class="lead">Esc — обратно, R — сначала.</p>
+        </section>
+
+        <section data-screen="won">
+            <p class="kicker">эвакуация</p>
+            <h2>ВЫШЕЛ</h2>
+            <p class="lead">Счёт <b id="won-score">0</b> · трофеи <b id="won-loot">0 / 0</b></p>
+            <button type="button" data-action="start">ЕЩЁ РАЗ</button>
+        </section>
+
+        <section data-screen="lost">
+            <p class="kicker">причал забрал своё</p>
+            <h2>КОНЕЦ</h2>
+            <p class="lead">Счёт <b id="lost-score">0</b></p>
+            <button type="button" data-action="start">СНАЧАЛА</button>
+        </section>
+    </div>
+</main>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

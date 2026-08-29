@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "neon-claw",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/serve.mjs"
+      ],
+      "port": 4197,
+      "autoPort": true
+    }
+  ]
+}

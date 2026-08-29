@@ -1,0 +1,175 @@
+/*
+ * Оформление вокруг холста. Внутри холста css не участвует — там всё
+ * рисуется руками, поэтому здесь только рамка, экраны и типографика.
+ */
+
+:root {
+    --ink: #05060f;
+    --cyan: #22e8ff;
+    --magenta: #ff2d95;
+    --gold: #ffc857;
+    --mint: #4dffb8;
+    --text: #cfe6ff;
+    --dim: rgba(207, 230, 255, 0.62);
+    --font: 'DIN Alternate', 'Avenir Next Condensed', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at 50% 30%, #0d1030 0%, #05060f 55%, #030409 100%);
+    color: var(--text);
+    font-family: var(--font);
+    overflow: hidden;
+}
+
+.frame {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    border: 1px solid rgba(34, 232, 255, 0.22);
+    box-shadow:
+        0 0 0 1px rgba(255, 45, 149, 0.12),
+        0 0 60px rgba(34, 232, 255, 0.10),
+        0 30px 90px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+}
+
+#screen {
+    display: block;
+    width: 100%;
+    height: 100%;
+    outline: none;
+    background: var(--ink);
+}
+
+/* ------------------------------------------------------------- экраны */
+
+#overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 4%;
+    text-align: center;
+    background:
+        radial-gradient(circle at 50% 45%, rgba(10, 12, 32, 0.72), rgba(3, 4, 9, 0.94));
+    backdrop-filter: blur(3px);
+}
+
+#overlay[data-show='none'] { display: none; }
+#overlay section { display: none; max-width: 560px; }
+#overlay[data-show='title'] section[data-screen='title'],
+#overlay[data-show='paused'] section[data-screen='paused'],
+#overlay[data-show='won'] section[data-screen='won'],
+#overlay[data-show='lost'] section[data-screen='lost'] { display: block; }
+
+.kicker {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+h1 {
+    margin: 0 0 14px;
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    color: var(--cyan);
+    text-shadow: 0 0 18px rgba(34, 232, 255, 0.55), 0 0 46px rgba(34, 232, 255, 0.25);
+}
+
+h1 span {
+    display: inline-block;
+    margin-left: 0.28em;
+    color: var(--magenta);
+    text-shadow: 0 0 18px rgba(255, 45, 149, 0.6), 0 0 46px rgba(255, 45, 149, 0.3);
+}
+
+h2 {
+    margin: 0 0 12px;
+    font-size: clamp(1.7rem, 4.5vw, 2.6rem);
+    letter-spacing: 0.22em;
+    color: var(--gold);
+    text-shadow: 0 0 18px rgba(255, 200, 87, 0.45);
+}
+
+.lead {
+    margin: 0 auto 20px;
+    max-width: 42ch;
+    font-size: 0.98rem;
+    line-height: 1.55;
+    color: var(--dim);
+}
+
+.lead b { color: var(--mint); font-weight: 700; }
+
+.keys {
+    display: grid;
+    gap: 6px 18px;
+    margin: 0 auto 18px;
+    max-width: 430px;
+    font-size: 0.86rem;
+}
+
+.keys > div {
+    display: grid;
+    grid-template-columns: 9.5em 1fr;
+    gap: 12px;
+    align-items: baseline;
+    text-align: left;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(34, 232, 255, 0.12);
+}
+
+.keys dt {
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+}
+
+.keys dd {
+    margin: 0;
+    color: var(--dim);
+}
+
+.hint {
+    margin: 0 auto 22px;
+    max-width: 40ch;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: rgba(255, 200, 87, 0.72);
+}
+
+button {
+    appearance: none;
+    padding: 12px 30px;
+    border: 1px solid var(--magenta);
+    background: rgba(255, 45, 149, 0.08);
+    color: #ffd7ec;
+    font: inherit;
+    font-size: 0.95rem;
+    letter-spacing: 0.24em;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+button:hover,
+button:focus-visible {
+    background: rgba(255, 45, 149, 0.2);
+    color: #fff;
+    box-shadow: 0 0 24px rgba(255, 45, 149, 0.45);
+    outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}
