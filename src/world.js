@@ -219,6 +219,7 @@ function fireArrow(world) {
         vx: Math.cos(shot.angle) * speed,
         vy: Math.sin(shot.angle) * speed,
         t: 0,
+        trail: [],
     });
 }
 
@@ -235,6 +236,8 @@ function stepArrows(world, dt) {
 
     for (const a of world.arrows) {
         a.t += dt;
+        a.trail.push([a.x, a.y]);
+        if (a.trail.length > 14) a.trail.shift();
         a.vy += BOW.gravity * dt;
         const decay = 1 - Math.min(1, BOW.drag * dt);
         a.vx *= decay;

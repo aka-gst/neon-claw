@@ -48,7 +48,7 @@ export function createPlayer(spawn) {
 
         attack: { phase: 'none', t: 0, hits: new Set() },
         /** Лук: натяжение, угол и колчан. `release` мир забирает и обнуляет. */
-        bow: { drawing: false, t: 0, angle: 0, arrows: BOW.arrows, release: null },
+        bow: { drawing: false, t: 0, power: 0, angle: 0, arrows: BOW.arrows, release: null },
         ledge: null,
         climb: 0,
 
@@ -120,11 +120,12 @@ function stepBow(p, intent, dt) {
         bow.drawing = false;
         // Случайное касание не должно стоить стрелы: слишком короткое
         // натяжение отменяет выстрел, а не тратит его впустую.
-        if (bow.t < 0.12 || bow.arrows <= 0) {
+        if (bow.power < 0.18 || bow.arrows <= 0) {
             bow.t = 0;
+            bow.power = 0;
             return;
         }
-        bow.release = { angle: bow.angle, power: Math.min(1, bow.t / BOW.drawTime) };
+        bow.release = { angle: bow.angle, power: bow.power };
         bow.arrows -= 1;
         bow.t = 0;
         p.sfx.push('bow.release');
@@ -138,6 +139,9 @@ function stepBow(p, intent, dt) {
         p.sfx.push('bow.draw');
     }
     bow.t = Math.min(BOW.drawTime, bow.t + dt);
+    bow.power = intent.aimPower != null
+        ? Math.min(1, intent.aimPower)
+        : Math.min(1, bow.t / BOW.drawTime);
     bow.angle = aimAngle(p, intent);
     // Целишься назад — разворачиваешься. Стрелять из-за спины нельзя.
     const facing = Math.cos(bow.angle) >= 0 ? 1 : -1;
@@ -148,6 +152,7 @@ function stepBow(p, intent, dt) {
 function cancelBow(p) {
     p.bow.drawing = false;
     p.bow.t = 0;
+    p.bow.power = 0;
 }
 
 /* ------------------------------------------------------------------ движение */

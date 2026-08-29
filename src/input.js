@@ -82,8 +82,9 @@ export function createInput(target = window) {
  * Клавиатура и сенсор сливаются здесь, а не в игре: миру всё равно, чем
  * его двигают, и ни одна строчка правил не должна знать про телефон.
  */
-export function readIntent(input, touch = null) {
+export function readIntent(input, touch = null, pointer = null) {
     const t = touch?.state;
+    const aimLen = Math.hypot(t?.aimX ?? 0, t?.aimY ?? 0);
     // Забирать нажатия надо с обеих сторон и до сравнения: `||` замыкается,
     // и оставленное в очереди сенсорное нажатие выстрелит следующим кадром.
     const jump = input.take('jump');
@@ -102,11 +103,19 @@ export function readIntent(input, touch = null) {
         attackDown: attack || padAttack,
         dashDown: dash || padDash,
         walk: input.held('walk') || Boolean(t?.walk),
-        bowHeld: input.held('bow') || Boolean(t?.bowHeld),
+        bowHeld: input.held('bow') || Boolean(t?.bowHeld) || Boolean(pointer?.active),
         // Куда целиться. С клавиатуры — стрелками, с сенсора — наклоном
         // стика: у лука нет своего направления, он берёт его у движения.
-        aimX: t?.aimX ?? ((input.held('right') ? 1 : 0) - (input.held('left') ? 1 : 0)),
-        aimY: t?.aimY ?? ((input.held('down') ? 1 : 0) - (input.held('up') ? 1 : 0)),
+        aimX: pointer?.active ? pointer.x : (t?.aimX ?? ((input.held('right') ? 1 : 0) - (input.held('left') ? 1 : 0))),
+        aimY: pointer?.active ? pointer.y : (t?.aimY ?? ((input.held('down') ? 1 : 0) - (input.held('up') ? 1 : 0))),
+        /**
+         * Сила натяжения одним жестом вместе с углом — так в Bowman, и это
+         * лучше отдельного таймера: рука уже показала, куда и насколько.
+         * Клавиатуре жеста взять неоткуда, там сила по-прежнему от времени.
+         */
+        aimPower: pointer?.active
+            ? pointer.power
+            : (t?.bowHeld && aimLen > 0.15 ? Math.min(1, aimLen) : null),
     };
 }
 

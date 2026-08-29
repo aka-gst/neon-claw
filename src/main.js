@@ -163,7 +163,7 @@ function frame(now) {
         accumulator += elapsed;
         let steps = 0;
         while (accumulator >= STEP && steps < 8) {
-            stepWorld(world, readIntent(input, touch), STEP);
+            stepWorld(world, readIntent(input, touch, pointer), STEP);
             accumulator -= STEP;
             steps += 1;
         }
@@ -180,6 +180,49 @@ function frame(now) {
     render(renderer, world, camera);
     requestAnimationFrame(frame);
 }
+
+/**
+ * Прицел мышью. Угол и сила одним движением: чем дальше от героя курсор,
+ * тем сильнее натянуто. Так в Bowman, и это лучше отдельного таймера —
+ * рука уже показала и куда, и насколько, а дуга подтверждает.
+ *
+ * Отсчёт ведётся в мире, а не в пикселях экрана: кадр подстраивается под
+ * телефон, и привязка к экрану врала бы при каждом повороте.
+ */
+const pointer = { active: false, x: 0, y: 0, power: 0 };
+
+function aimAt(event) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const worldX = camera.x + ((event.clientX - rect.left) / rect.width) * VIEW.w;
+    const worldY = camera.y + ((event.clientY - rect.top) / rect.height) * VIEW.h;
+    const body = world.player.body;
+    const dx = worldX - body.x;
+    const dy = worldY - (body.y - body.h * 0.62);
+    const len = Math.hypot(dx, dy) || 1;
+    pointer.x = dx / len;
+    pointer.y = dy / len;
+    pointer.power = Math.max(0, Math.min(1, (len - 18) / 130));
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'touch' || screen !== 'none') return;
+    event.preventDefault();
+    pointer.active = true;
+    aimAt(event);
+    try {
+        canvas.setPointerCapture(event.pointerId);
+    } catch {
+        // Не вышло — прицел просто перестанет следить за курсором вне холста.
+    }
+});
+canvas.addEventListener('pointermove', (event) => {
+    if (pointer.active) aimAt(event);
+});
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+    canvas.addEventListener(type, () => { pointer.active = false; });
+}
+canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
 window.addEventListener('keydown', (event) => {
     audio.unlock();
@@ -238,18 +281,20 @@ window.NEON = {
     renderer,
     input,
     touch,
+    pointer,
     restart,
     setLevel,
     show,
+    /**
+     * Прогон без кадров. Ввод берётся общим путём — вместе с сенсором и
+     * мышью: хук, который строит намерение по-своему, проверяет не игру,
+     * а сам себя.
+     */
     advance(keys = {}, seconds = 1) {
-        const base = {
-            left: false, right: false, up: false, down: false,
-            jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false, walk: false, bowHeld: false, aimX: 0, aimY: 0,
-        };
         const steps = Math.max(1, Math.round(seconds / STEP));
         for (let i = 0; i < steps; i += 1) {
             stepWorld(world, {
-                ...base,
+                ...readIntent(input, touch, pointer),
                 ...keys,
                 jumpDown: Boolean(keys.jumpDown) && i === 0,
                 attackDown: Boolean(keys.attackDown) && i === 0,

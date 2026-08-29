@@ -66,3 +66,29 @@ test('одно и то же действие с двух сторон не уд�
     assert.equal(both.right, true);
     assert.equal(both.jumpDown, true);
 });
+
+test('указатель задаёт угол и силу одним жестом', () => {
+    const aiming = readIntent(keyboard(), null, { active: true, x: 0.8, y: -0.6, power: 0.75 });
+    assert.equal(aiming.bowHeld, true, 'наведённый указатель не натягивает лук');
+    assert.equal(aiming.aimX, 0.8);
+    assert.equal(aiming.aimY, -0.6);
+    assert.equal(aiming.aimPower, 0.75);
+
+    const idle = readIntent(keyboard(), null, { active: false, x: 0.8, y: -0.6, power: 0.75 });
+    assert.equal(idle.bowHeld, false);
+    assert.equal(idle.aimPower, null, 'без жеста сила должна набираться временем');
+});
+
+test('указатель перебивает стрелки: жест точнее восьми направлений', () => {
+    const both = readIntent(keyboard(['left']), null, { active: true, x: 1, y: 0, power: 0.5 });
+    assert.equal(both.aimX, 1, 'стрелка перебила указатель');
+    assert.equal(both.left, true, 'стрелка перестала двигать героя');
+});
+
+test('слабый наклон стика не считается прицелом', () => {
+    const nudge = readIntent(keyboard(), pad({ bowHeld: true, aimX: 0.05, aimY: 0.05 }));
+    assert.equal(nudge.aimPower, null, 'дрожание пальца задало силу выстрела');
+
+    const real = readIntent(keyboard(), pad({ bowHeld: true, aimX: 0.7, aimY: -0.4 }));
+    assert.ok(real.aimPower > 0.7 && real.aimPower <= 1, `сила ${real.aimPower}`);
+});

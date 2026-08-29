@@ -350,7 +350,7 @@ function drawHero(ctx, p, glowPass, time) {
         // Лук держат обеими руками и разворачивают по прицелу: поза должна
         // говорить, куда полетит, ещё до того, как игрок увидит дугу.
         const local = p.facing > 0 ? p.bow.angle : Math.PI - p.bow.angle;
-        const power = Math.min(1, p.bow.t / BOW.drawTime);
+        const power = p.bow.power;
         ctx.save();
         ctx.translate(4, shoulder + 2);
         ctx.rotate(local);
@@ -788,7 +788,7 @@ function drawArrows(ctx, world, glowPass) {
     const p = world.player;
 
     if (p.bow.drawing) {
-        const power = Math.min(1, p.bow.t / BOW.drawTime);
+        const power = p.bow.power;
         const speed = BOW.speedMin + (BOW.speedMax - BOW.speedMin) * power;
         let x = p.body.x + Math.cos(p.bow.angle) * 8;
         let y = p.body.y - p.body.h * 0.62 + Math.sin(p.bow.angle) * 8;
@@ -814,6 +814,16 @@ function drawArrows(ctx, world, glowPass) {
 
     ctx.lineCap = 'round';
     for (const a of world.arrows) {
+        // След: по нему читается дуга уже улетевшей стрелы, и следующий
+        // выстрел поправляют по нему, а не наугад.
+        if (a.trail && a.trail.length > 1) {
+            ctx.strokeStyle = 'rgba(191, 244, 255, 0.28)';
+            ctx.lineWidth = lw(1);
+            ctx.beginPath();
+            ctx.moveTo(a.trail[0][0], a.trail[0][1]);
+            for (let i = 1; i < a.trail.length; i += 1) ctx.lineTo(a.trail[i][0], a.trail[i][1]);
+            ctx.stroke();
+        }
         const angle = Math.atan2(a.vy, a.vx);
         ctx.strokeStyle = '#bff4ff';
         ctx.lineWidth = lw(1.8);
