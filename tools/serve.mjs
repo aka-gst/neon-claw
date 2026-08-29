@@ -6,7 +6,7 @@
  * `python3 -m http.server` однопоточный и подвисает на параллельных
  * запросах браузера.
  *
- *   npm start            → http://localhost:4197
+ *   npm start            → http://localhost:4231
  *   npm start -- 5000    → другой порт
  */
 
@@ -16,7 +16,7 @@ import { stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
-const PORT = Number(process.argv[2] ?? process.env.PORT ?? 4197);
+const PORT = Number(process.argv[2] ?? process.env.PORT ?? 4231);
 
 const TYPES = {
     '.html': 'text/html; charset=utf-8',
