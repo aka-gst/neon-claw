@@ -50,7 +50,7 @@
 Текст запроса (подставь описание района и слоя из таблиц ниже):
 
 ```
-Verne one single PNG file, exactly 1920 x 540 pixels, with a real alpha
+Return one single PNG file, exactly 1920 x 540 pixels, with a real alpha
 channel. Do NOT return a contact sheet, a grid, a preview collage, or
 multiple variants — one image only. No captions, no labels, no filename
 text baked into the picture.
