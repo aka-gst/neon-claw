@@ -8,11 +8,11 @@ test('карта прямоугольная и содержит всё, без �
     const level = parseLevel();
     assert.ok(level.rows.every((row) => row.length === level.width), 'строки разной длины');
     assert.ok(level.exit, 'нет точки эвакуации');
-    assert.ok(level.enemies.length >= 2, 'корсаров меньше двух');
+    assert.ok(level.enemies.length >= 2, 'стражей меньше двух');
     assert.ok(level.loot.length >= 8, 'добра слишком мало для среза');
 });
 
-test('старт, корсары и выход стоят на камне, а не висят в воздухе', () => {
+test('старт, стражи и выход стоят на камне, а не висят в воздухе', () => {
     const level = parseLevel();
     const standsOnFloor = (spot) => {
         const col = Math.floor(spot.x / TILE);
@@ -21,7 +21,7 @@ test('старт, корсары и выход стоят на камне, а н
     };
     assert.ok(standsOnFloor(level.spawn), 'старт висит');
     assert.ok(standsOnFloor(level.exit), 'выход висит');
-    for (const foe of level.enemies) assert.ok(standsOnFloor(foe), `корсар висит: ${foe.x}`);
+    for (const foe of level.enemies) assert.ok(standsOnFloor(foe), `страж висит: ${foe.x}`);
 });
 
 test('добро не замуровано в камне — его можно достать', () => {

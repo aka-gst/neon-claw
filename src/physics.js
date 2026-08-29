@@ -11,7 +11,7 @@
  */
 
 import { TILE, LEDGE } from './tuning.js';
-import { AIR, SOLID, ONEWAY, tileAt, colAt, rowAt, solidInRect } from './level.js';
+import { AIR, SOLID, ONEWAY, tileAt, colAt, rowAt, solidInRect, solidAtPoint } from './level.js';
 
 /** Шаг разбиения хода. Меньше тайла — иначе тонкая стенка проскакивается. */
 const SUBSTEP = TILE / 4;
@@ -153,6 +153,25 @@ export function findLedge(level, b, facing) {
         return { hangX, hangY, standX, standY: top, col, row, facing };
     }
     return null;
+}
+
+/**
+ * Есть ли стена вплотную сбоку. Щупаются две точки — у плеч и у колен:
+ * по одной герой цеплялся бы за угол тайла, мимо которого летит.
+ */
+export function wallSide(level, b) {
+    const upper = b.y - b.h + 5;
+    const lower = b.y - 5;
+    for (const side of [1, -1]) {
+        const x = b.x + side * (b.w / 2 + 2);
+        if (solidAtPoint(level, x, upper) && solidAtPoint(level, x, lower)) return side;
+    }
+    return 0;
+}
+
+/** Хватит ли места встать в полный рост — вопрос выхода из подката. */
+export function headroom(level, b, height) {
+    return !solidInRect(level, b.x - b.w / 2, b.y - height, b.w, height);
 }
 
 export const overlaps = (a, b) =>

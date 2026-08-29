@@ -14,7 +14,7 @@ import { intent } from './helpers.mjs';
 
 function hop(from, keys, seconds) {
     const world = createWorld();
-    // Корсары здесь не при чём — проверяется геометрия.
+    // Стражи здесь не при чём — проверяется геометрия.
     world.enemies.length = 0;
     const p = world.player;
     p.body.x = from.x;

@@ -71,6 +71,17 @@ const VOICES = {
     land: () => tone({ from: 140, to: 70, dur: 0.09, type: 'sine', gain: 0.22 }),
     swing: () => hiss({ dur: 0.09, gain: 0.12, freq: 3200, q: 0.7 }),
     ledge: () => tone({ from: 520, to: 380, dur: 0.07, type: 'triangle', gain: 0.14 }),
+    // Толчок от стены звучит короче прыжка: он не взлёт, а отскок.
+    walljump: () => {
+        tone({ from: 380, to: 700, dur: 0.08, type: 'triangle', gain: 0.17 });
+        hiss({ dur: 0.12, gain: 0.13, freq: 2600, q: 1.2 });
+    },
+    dash: () => {
+        hiss({ dur: 0.16, gain: 0.16, freq: 1800, q: 0.5 });
+        tone({ from: 620, to: 240, dur: 0.14, type: 'sawtooth', gain: 0.11 });
+    },
+    slide: () => hiss({ dur: 0.34, gain: 0.13, freq: 1100, q: 0.9 }),
+    scrape: () => hiss({ dur: 0.06, gain: 0.05, freq: 3400, q: 2.2 }),
 
     hit: () => {
         tone({ from: 180, to: 60, dur: 0.14, type: 'square', gain: 0.26 });

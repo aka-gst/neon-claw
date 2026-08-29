@@ -1,14 +1,25 @@
 /**
- * Герой: движение, сабля, зацеп.
+ * Герой: движение, паркур, клинок.
  *
- * Модуль без DOM — им же питаются тесты. Состояний намеренно мало:
- * `move` (земля и воздух — это одно состояние с разными коэффициентами),
- * `hang`, `climb`, `hurt`, `dead`. Каждое лишнее состояние в платформере
- * оборачивается парой невозможных переходов, которые всплывают через месяц.
+ * Модуль без DOM — им же питаются тесты. Состояния держатся в узде
+ * намеренно: каждое лишнее в платформере оборачивается парой невозможных
+ * переходов, которые всплывают через месяц.
+ *
+ *   move   бег, прыжок и падение — это одно состояние с разными коэффициентами
+ *   wall   сползание по стене
+ *   hang   вис на кромке
+ *   climb  подтягивание (управление заблокировано)
+ *   dash   рывок
+ *   slide  подкат
+ *   dead   —
+ *
+ * Глаголов движения ровно столько, чтобы вертикаль была дорогой, а не
+ * препятствием: зацеп берёт три тайла, стена — любую высоту зигзагом,
+ * рывок — четыре тайла провала, подкат — щель в один тайл.
  */
 
-import { PLAYER, LEDGE, SWORD, STEP } from './tuning.js';
-import { makeBody, moveX, moveY, findLedge } from './physics.js';
+import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, STEP } from './tuning.js';
+import { makeBody, moveX, moveY, findLedge, wallSide, headroom } from './physics.js';
 
 export function createPlayer(spawn) {
     return {
@@ -24,27 +35,33 @@ export function createPlayer(spawn) {
         dropLock: 0,
         hitstop: 0,
         controlLock: 0,
-        jumpHeldPrev: false,
-        /** Отпустил кнопку — прыжок обрезаем ровно один раз за прыжок. */
+        /** Толчок от стены не должен отменяться зажатой к стене клавишей. */
+        pushLock: 0,
         cutUsed: true,
+
+        wall: 0,
+        wallCoyote: 0,
+        dashReady: true,
+        dashTimer: 0,
+        dashCooldown: 0,
+        slideTimer: 0,
 
         attack: { phase: 'none', t: 0, hits: new Set() },
         ledge: null,
         climb: 0,
 
-        anim: { run: 0, land: 0, swing: 0, hurtFlash: 0 },
-        /** Что игрок должен услышать. Мир заберёт и очистит. */
+        anim: { run: 0, land: 0, swing: 0, hurtFlash: 0, dash: 0 },
         sfx: [],
         spawn: { ...spawn },
     };
 }
 
-/** Куда достаёт сабля в активной фазе. */
+/** Куда достаёт клинок в активной фазе. */
 export function attackRect(p) {
     const b = p.body;
     return {
         x: p.facing > 0 ? b.x + 1 : b.x - 1 - SWORD.reach,
-        y: b.y - b.h * 0.9,
+        y: b.y - b.h * 0.9 - (p.state === 'slide' ? 6 : 0),
         w: SWORD.reach,
         h: SWORD.height,
     };
@@ -52,6 +69,8 @@ export function attackRect(p) {
 
 export const isAttacking = (p) => p.attack.phase === 'active';
 export const canBeHit = (p) => p.invuln <= 0 && p.state !== 'dead';
+
+/* ------------------------------------------------------------------- клинок */
 
 function startAttack(p) {
     if (p.attack.phase !== 'none') return;
@@ -73,48 +92,69 @@ function stepAttack(p, dt) {
     if (a.phase === 'recover' && a.t >= recover) { a.phase = 'none'; a.t = 0; }
 }
 
+/* ------------------------------------------------------------------ движение */
+
 function horizontal(p, intent, dt) {
     const b = p.body;
     const dir = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
-    // Замах сажает героя на месте: удар должен иметь вес, а не быть
-    // бесплатной добавкой к бегу. В воздухе инерция остаётся — там своя цена.
     const swinging = p.attack.phase !== 'none' && b.onGround;
     const top = PLAYER.runSpeed * (swinging ? 0.35 : 1);
 
-    if (dir !== 0 && p.controlLock <= 0) {
-        p.facing = dir;
-        const accel = b.onGround ? PLAYER.accel : PLAYER.airAccel;
-        b.vx += dir * accel * dt;
-        if (Math.abs(b.vx) > top) b.vx = dir * top;
-    } else {
+    // Отдача и толчок от стены — это не бег, а бросок: пока они длятся,
+    // ни разгон, ни трение к ним не применяются.
+    if (p.controlLock > 0 || p.pushLock > 0) return;
+
+    if (dir === 0) {
         const brake = (b.onGround ? PLAYER.friction : PLAYER.airDrag) * dt;
         b.vx = Math.abs(b.vx) <= brake ? 0 : b.vx - Math.sign(b.vx) * brake;
+        return;
+    }
+
+    p.facing = dir;
+    const along = b.vx * dir;
+    if (along < top) {
+        const accel = b.onGround ? PLAYER.accel : PLAYER.airAccel;
+        b.vx += dir * accel * dt;
+        if (b.vx * dir > top) b.vx = dir * top;
+    } else {
+        // Быстрее беговой герой едет только по инерции рывка. Она гасится,
+        // но не обрывается: иначе рывок кончается как удар в стену.
+        b.vx = dir * Math.max(top, along - DASH.exit * dt);
     }
 }
 
 function vertical(p, intent, dt) {
     const b = p.body;
 
-    if (b.onGround) {
-        p.coyote = PLAYER.coyote;
-    } else {
-        p.coyote = Math.max(0, p.coyote - dt);
-    }
+    p.coyote = b.onGround ? PLAYER.coyote : Math.max(0, p.coyote - dt);
+    p.wallCoyote = Math.max(0, p.wallCoyote - dt);
     p.buffer = Math.max(0, p.buffer - dt);
     if (intent.jumpDown) p.buffer = PLAYER.jumpBuffer;
 
-    if (p.buffer > 0 && p.coyote > 0 && p.controlLock <= 0) {
-        // Спрыгивание с помоста: «вниз + прыжок» отключает односторонние
-        // тайлы на пару кадров — этого хватает, чтобы провалиться сквозь.
-        if (intent.down) {
-            b.dropTimer = 0.12;
-        } else {
-            b.vy = -PLAYER.jump;
+    if (p.buffer > 0 && p.controlLock <= 0) {
+        if (p.coyote > 0) {
+            if (intent.down) {
+                b.dropTimer = 0.12;
+            } else {
+                b.vy = -PLAYER.jump;
+                p.cutUsed = false;
+                p.sfx.push('jump');
+            }
+            p.buffer = 0;
+            p.coyote = 0;
+        } else if (p.wallCoyote > 0 && p.wall !== 0) {
+            // Толчок от стены: вверх слабее обычного прыжка, зато вбок.
+            b.vy = -WALL.jumpY;
+            b.vx = -p.wall * WALL.jumpX;
+            p.facing = -p.wall;
+            p.pushLock = WALL.lock;
             p.cutUsed = false;
-            p.sfx.push('jump');
+            p.wallCoyote = 0;
+            p.wall = 0;
+            p.buffer = 0;
+            p.dashReady = true;
+            p.sfx.push('walljump');
         }
-        p.buffer = 0;
-        p.coyote = 0;
     }
 
     if (!intent.jumpHeld && !p.cutUsed && b.vy < 0) {
@@ -126,11 +166,139 @@ function vertical(p, intent, dt) {
     b.vy = Math.min(PLAYER.maxFall, b.vy + g * dt);
 }
 
+/* -------------------------------------------------------------------- стена */
+
+function tryWall(p, level, intent) {
+    const b = p.body;
+    if (b.onGround || b.vy < 0 || p.state !== 'move') return false;
+    const side = wallSide(level, b);
+    if (side === 0) return false;
+    // Прижаться можно только сознательно: клавиша в сторону стены.
+    if (!((side > 0 && intent.right) || (side < 0 && intent.left))) return false;
+
+    p.state = 'wall';
+    p.wall = side;
+    p.facing = side;
+    p.wallCoyote = WALL.coyote;
+    p.dashReady = true;
+    p.cutUsed = true;
+    return true;
+}
+
+function updateWall(p, level, intent, dt) {
+    const b = p.body;
+    p.wallCoyote = WALL.coyote;
+    p.buffer = Math.max(0, p.buffer - dt);
+    if (intent.jumpDown) p.buffer = PLAYER.jumpBuffer;
+
+    const holding = (p.wall > 0 && intent.right) || (p.wall < 0 && intent.left);
+    const stillWall = wallSide(level, b) === p.wall;
+
+    if (p.buffer > 0) {
+        b.vy = -WALL.jumpY;
+        b.vx = -p.wall * WALL.jumpX;
+        p.facing = -p.wall;
+        p.pushLock = WALL.lock;
+        p.cutUsed = false;
+        p.state = 'move';
+        p.wall = 0;
+        p.buffer = 0;
+        p.wallCoyote = 0;
+        p.sfx.push('walljump');
+        return;
+    }
+
+    if (!holding || !stillWall) {
+        p.state = 'move';
+        p.wall = 0;
+        return;
+    }
+
+    b.vx = 0;
+    b.vy = Math.min(WALL.slide, b.vy + PLAYER.fallGravity * dt);
+    moveY(level, b, b.vy * dt);
+    if (b.onGround) {
+        p.state = 'move';
+        p.wall = 0;
+    }
+}
+
+/* -------------------------------------------------------------------- рывок */
+
+function tryDash(p, intent, level) {
+    if (!intent.dashDown || p.dashCooldown > 0 || p.controlLock > 0) return false;
+    if (p.state !== 'move' && p.state !== 'wall') return false;
+
+    if (intent.down && p.body.onGround) {
+        p.state = 'slide';
+        p.slideTimer = SLIDE.max;
+        p.body.h = SLIDE.height;
+        p.body.vx = p.facing * Math.max(SLIDE.speed, Math.abs(p.body.vx));
+        p.attack.phase = 'none';
+        p.sfx.push('slide');
+        return true;
+    }
+
+    if (!p.dashReady) return false;
+    if (p.state === 'wall') p.facing = -p.wall;
+    p.state = 'dash';
+    p.wall = 0;
+    p.dashTimer = DASH.time;
+    p.dashReady = false;
+    p.dashCooldown = DASH.cooldown;
+    p.body.vx = p.facing * DASH.speed;
+    p.body.vy = 0;
+    p.attack.phase = 'none';
+    p.anim.dash = 0;
+    p.sfx.push('dash');
+    return true;
+}
+
+function updateDash(p, level, dt) {
+    const b = p.body;
+    p.dashTimer -= dt;
+    p.anim.dash += dt;
+    b.vy = 0;
+    b.vx = p.facing * DASH.speed;
+    moveX(level, b, b.vx * dt);
+    moveY(level, b, 0);
+    if (b.hitWall !== 0 || p.dashTimer <= 0) {
+        p.state = 'move';
+        b.vx = p.facing * PLAYER.runSpeed * (b.hitWall !== 0 ? 0 : 1.15);
+    }
+}
+
+/* ------------------------------------------------------------------- подкат */
+
+function updateSlide(p, level, intent, dt) {
+    const b = p.body;
+    p.slideTimer -= dt;
+
+    const brake = SLIDE.friction * dt;
+    b.vx = Math.abs(b.vx) <= brake ? 0 : b.vx - Math.sign(b.vx) * brake;
+    b.vy = Math.min(PLAYER.maxFall, b.vy + PLAYER.fallGravity * dt);
+
+    moveX(level, b, b.vx * dt);
+    moveY(level, b, b.vy * dt);
+
+    const done = p.slideTimer <= 0 || Math.abs(b.vx) < SLIDE.minSpeed || b.hitWall !== 0;
+    if (!done) return;
+
+    // Под низким потолком подкат не заканчивается: встать некуда.
+    if (!headroom(level, b, PLAYER.h)) {
+        p.slideTimer = 0.1;
+        if (Math.abs(b.vx) < SLIDE.minSpeed) b.vx = p.facing * SLIDE.minSpeed;
+        return;
+    }
+    b.h = PLAYER.h;
+    p.state = 'move';
+}
+
+/* --------------------------------------------------------------- вис и урон */
+
 function tryLedge(p, level, intent) {
     const b = p.body;
     if (b.onGround || p.dropLock > 0 || p.attack.phase !== 'none') return false;
-    // Уходишь от стены — не цепляешься. Иначе карниз ловит тех, кто явно
-    // решил лететь мимо, и это читается как залипание.
     if ((intent.left && p.facing > 0) || (intent.right && p.facing < 0)) return false;
 
     const grab = findLedge(level, b, p.facing);
@@ -138,16 +306,18 @@ function tryLedge(p, level, intent) {
 
     p.ledge = grab;
     p.state = 'hang';
-    p.sfx.push('ledge');
+    p.wall = 0;
     b.x = grab.hangX;
     b.y = grab.hangY;
     b.vx = 0;
     b.vy = 0;
     p.cutUsed = true;
+    p.dashReady = true;
+    p.sfx.push('ledge');
     return true;
 }
 
-function updateHang(p, intent, dt) {
+function updateHang(p, intent) {
     const b = p.body;
     b.vx = 0;
     b.vy = 0;
@@ -158,8 +328,6 @@ function updateHang(p, intent, dt) {
         p.ledge = null;
         return;
     }
-    // Прыжок с виса — это подтягивание, а не отдельный прыжок вверх:
-    // за край держатся руками, значит наверх выбираются, а не взлетают.
     if (intent.jumpDown || intent.up) {
         p.state = 'climb';
         p.climb = LEDGE.climb;
@@ -194,9 +362,11 @@ export function hurtPlayer(p, fromX, damage = 1) {
     p.controlLock = 0.18;
     p.anim.hurtFlash = 0.4;
     p.attack.phase = 'none';
-    p.sfx.push('hurt');
+    p.body.h = PLAYER.h;
     p.state = p.hp <= 0 ? 'dead' : 'move';
     p.ledge = null;
+    p.wall = 0;
+    p.sfx.push('hurt');
     const away = Math.sign(p.body.x - fromX) || -p.facing;
     p.body.vx = away * PLAYER.hurtKnockback.x;
     p.body.vy = -PLAYER.hurtKnockback.y;
@@ -210,6 +380,8 @@ export function pushPlayer(p, fromX, force) {
     p.body.vy = Math.min(p.body.vy, -70);
 }
 
+/* --------------------------------------------------------------------- шаг */
+
 export function updatePlayer(p, level, intent, dt) {
     if (p.hitstop > 0) {
         p.hitstop -= dt;
@@ -219,6 +391,8 @@ export function updatePlayer(p, level, intent, dt) {
     p.invuln = Math.max(0, p.invuln - dt);
     p.dropLock = Math.max(0, p.dropLock - dt);
     p.controlLock = Math.max(0, p.controlLock - dt);
+    p.pushLock = Math.max(0, p.pushLock - dt);
+    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.anim.hurtFlash = Math.max(0, p.anim.hurtFlash - dt);
     p.anim.land = Math.max(0, p.anim.land - dt);
     p.body.dropTimer = Math.max(0, p.body.dropTimer - dt);
@@ -229,15 +403,29 @@ export function updatePlayer(p, level, intent, dt) {
         return;
     }
 
-    if (p.state === 'climb') {
-        updateClimb(p, dt);
-        return;
+    if (p.state === 'climb') return updateClimb(p, dt);
+    if (p.state === 'dash') return updateDash(p, level, dt);
+    if (p.state === 'slide') {
+        if (intent.jumpDown && headroom(level, p.body, PLAYER.h)) {
+            p.body.h = PLAYER.h;
+            p.state = 'move';
+            p.buffer = PLAYER.jumpBuffer;
+        } else {
+            return updateSlide(p, level, intent, dt);
+        }
     }
 
     if (p.state === 'hang') {
-        stepAttack(p, dt);
-        updateHang(p, intent, dt);
+        updateHang(p, intent);
         if (p.state === 'hang') return;
+    }
+
+    if (tryDash(p, intent, level)) return;
+
+    if (p.state === 'wall') {
+        stepAttack(p, dt);
+        updateWall(p, level, intent, dt);
+        if (p.state === 'wall') return;
     }
 
     if (intent.attackDown && p.state === 'move' && p.controlLock <= 0) startAttack(p);
@@ -255,14 +443,17 @@ export function updatePlayer(p, level, intent, dt) {
         p.anim.land = 0.16;
         p.sfx.push('land');
     }
-    if (p.body.onGround) p.cutUsed = true;
+    if (p.body.onGround) {
+        p.cutUsed = true;
+        p.dashReady = true;
+    }
 
-    if (p.state === 'move' && p.body.vy > 0) tryLedge(p, level, intent);
+    if (p.state === 'move' && p.body.vy > 0) {
+        if (!tryLedge(p, level, intent)) tryWall(p, level, intent);
+    }
 
     if (p.body.onGround && Math.abs(p.body.vx) > 12) p.anim.run += Math.abs(p.body.vx) * dt * 0.09;
     else if (p.body.onGround) p.anim.run += dt * 1.2;
-
-    p.jumpHeldPrev = intent.jumpHeld;
 }
 
 export { STEP };

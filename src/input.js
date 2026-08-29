@@ -14,6 +14,7 @@ const BINDINGS = {
     down: ['ArrowDown', 'KeyS'],
     jump: ['Space', 'ArrowUp', 'KeyW'],
     attack: ['KeyJ', 'KeyX', 'ControlLeft', 'ControlRight'],
+    dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
     pause: ['Escape', 'KeyP'],
     restart: ['KeyR'],
 };
@@ -82,6 +83,7 @@ export function readIntent(input) {
         jumpHeld: input.held('jump'),
         jumpDown: input.take('jump'),
         attackDown: input.take('attack'),
+        dashDown: input.take('dash'),
     };
 }
 

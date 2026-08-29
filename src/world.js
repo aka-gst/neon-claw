@@ -1,16 +1,16 @@
 /**
- * Мир: уровень, герой, корсары, добро — и правила их встречи.
+ * Мир: уровень, герой, стражи, добро — и правила их встречи.
  *
  * Здесь нет отрисовки. Всё, что должно быть видно, мир складывает в
  * `sparks` и `flashes`: рендер потом это проигрывает. Тот же приём, что и
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, CORSAIR, LOOT, PLAYER, CAMERA } from './tuning.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA } from './tuning.js';
 import { parseLevel, levelPixelHeight } from './level.js';
 import { overlaps, bodyRect } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
-import { createCorsair, updateCorsair, corsairAttackRect, isSwinging, hurtCorsair } from './enemy.js';
+import { createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer } from './enemy.js';
 
 export function createWorld(rows) {
     const level = parseLevel(rows);
@@ -18,7 +18,7 @@ export function createWorld(rows) {
     return {
         level,
         player,
-        enemies: level.enemies.map((e, i) => createCorsair(e, i)),
+        enemies: level.enemies.map((e, i) => createEnforcer(e, i)),
         loot: level.loot.map((l, i) => ({ ...l, id: i, taken: false, bob: i * 0.7, vx: 0, vy: 0 })),
         sparks: [],
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
@@ -29,6 +29,8 @@ export function createWorld(rows) {
         phase: 'play',
         time: 0,
         shake: 0,
+        /** Тикает, пока герой скребёт когтями по стене. */
+        scrape: 0,
         lastSafe: { ...level.spawn },
         notice: null,
     };
@@ -63,7 +65,7 @@ function playerAttacks(world) {
         if (!overlaps(blade, bodyRect(e.body))) continue;
 
         p.attack.hits.add(e.id);
-        const result = hurtCorsair(e, p.body.x);
+        const result = hurtEnforcer(e, p.body.x);
         const mid = { x: (blade.x + blade.w / 2 + e.body.x) / 2, y: e.body.y - e.body.h / 2 };
 
         if (result === 'blocked') {
@@ -71,7 +73,7 @@ function playerAttacks(world) {
             // потерянный темп и ни единицы урона.
             spark(world, mid.x, mid.y, 12, '#9ad8ff', 200, 0.3);
             world.events.push('clang');
-            pushPlayer(p, e.body.x, CORSAIR.clangKnockback);
+            pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, 3);
             say(world, 'Гарда. Выжди — она не вечная.', 1.6);
@@ -94,8 +96,8 @@ function enemiesAttack(world) {
     const rect = bodyRect(p.body);
     for (const e of world.enemies) {
         if (!isSwinging(e)) continue;
-        if (!overlaps(corsairAttackRect(e), rect)) continue;
-        if (hurtPlayer(p, e.body.x, CORSAIR.damage)) {
+        if (!overlaps(enforcerAttackRect(e), rect)) continue;
+        if (hurtPlayer(p, e.body.x, ENFORCER.damage)) {
             world.shake = Math.max(world.shake, 6);
             spark(world, p.body.x, p.body.y - p.body.h / 2, 16, '#ff5470', 240, 0.4);
         }
@@ -181,7 +183,21 @@ export function stepWorld(world, intent, dt) {
         world.events.push(...p.sfx);
         p.sfx.length = 0;
     }
-    for (const e of world.enemies) updateCorsair(e, world.level, p, dt);
+    for (const e of world.enemies) updateEnforcer(e, world.level, p, dt);
+
+    // Когти по бетону: искры и скрежет. Стена должна ощущаться стеной,
+    // а не невидимым режимом падения.
+    if (p.state === 'wall') {
+        world.scrape -= dt;
+        if (world.scrape <= 0) {
+            world.scrape = 0.07;
+            const side = p.wall;
+            spark(world, p.body.x + side * p.body.w / 2, p.body.y - p.body.h * 0.6, 3, '#7dfcff', 90, 0.22);
+            world.events.push('scrape');
+        }
+    } else {
+        world.scrape = 0;
+    }
 
     playerAttacks(world);
     enemiesAttack(world);

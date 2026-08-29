@@ -121,7 +121,7 @@ window.NEON = {
     advance(keys = {}, seconds = 1) {
         const base = {
             left: false, right: false, up: false, down: false,
-            jumpHeld: false, jumpDown: false, attackDown: false,
+            jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false,
         };
         const steps = Math.max(1, Math.round(seconds / STEP));
         for (let i = 0; i < steps; i += 1) {
@@ -130,6 +130,7 @@ window.NEON = {
                 ...keys,
                 jumpDown: Boolean(keys.jumpDown) && i === 0,
                 attackDown: Boolean(keys.attackDown) && i === 0,
+                dashDown: Boolean(keys.dashDown) && i === 0,
             }, STEP);
             world.events.length = 0;
             updateCamera(camera, world, STEP);

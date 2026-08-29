@@ -11,10 +11,10 @@
  * а точное попадание — здесь всё и должно быть светящимся контуром.
  */
 
-import { TILE, VIEW, SWORD, CORSAIR, LEDGE } from './tuning.js';
+import { TILE, VIEW, SWORD, ENFORCER, LEDGE } from './tuning.js';
 import { SOLID, ONEWAY, tileAt } from './level.js';
 import { attackRect } from './player.js';
-import { corsairAttackRect } from './enemy.js';
+import { enforcerAttackRect } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
 
 const GLOW_SCALE = 2;
@@ -142,39 +142,71 @@ function drawHero(ctx, p, glowPass, time) {
     ctx.translate(b.x, b.y);
     ctx.scale(p.facing, 1);
 
-    const hanging = p.state === 'hang';
-    const climbing = p.state === 'climb';
-    const airborne = !b.onGround && !hanging && !climbing;
+    const st = p.state;
+    const sliding = st === 'slide';
+    const dashing = st === 'dash';
+    const onWall = st === 'wall';
+    const hanging = st === 'hang';
+    const climbing = st === 'climb';
+    const airborne = !b.onGround && !onWall && !hanging && !climbing && !dashing;
     const speed = Math.abs(b.vx);
     const phase = p.anim.run;
     const crouch = p.anim.land > 0 ? 3 : 0;
 
-    const hip = -15 + crouch;
-    const shoulder = -24 + crouch;
-    const headY = -28.5 + crouch;
+    // Подкат кладёт героя набок, рывок наклоняет вперёд. Одна фигура, разные
+    // центры тяжести — этого хватает, чтобы позы не путались между собой.
+    const hip = sliding ? -6 : -14 + crouch;
+    const shoulder = sliding ? -9.5 : -23 + crouch;
+    const headY = sliding ? -11.5 : -27.5 + crouch;
+    const lean = dashing ? 3.5 : sliding ? 6 : 0;
+
+    /* след рывка */
+    if (dashing) {
+        ctx.strokeStyle = HERO.rim;
+        for (let i = 1; i <= 3; i += 1) {
+            ctx.globalAlpha = 0.3 / i;
+            ctx.beginPath();
+            ctx.moveTo(-6 - i * 7, -6 - i * 3);
+            ctx.lineTo(-16 - i * 9, -6 - i * 3);
+            ctx.lineWidth = lw(2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
 
     /* ноги */
     const legs = [];
-    if (hanging) {
-        legs.push([[0, hip], [2.5, -5], [1, 0]]);
-        legs.push([[0, hip], [-3, -6], [-5.5, -1]]);
+    if (sliding) {
+        legs.push([[lean * 0.4, hip], [7, hip - 1], [13, -1]]);
+        legs.push([[lean * 0.4, hip], [-2, hip + 2], [-6, -1]]);
+    } else if (hanging || climbing) {
+        legs.push([[0, hip], [3, -6], [1.5, 0]]);
+        legs.push([[0, hip], [-3, -7], [-5.5, -2]]);
+    } else if (onWall) {
+        // Ноги упёрты в стену, колени наружу: поза читается как «держусь».
+        legs.push([[0, hip], [5, -8], [8, -2]]);
+        legs.push([[0, hip], [3, -5], [7.5, -11]]);
+    } else if (dashing) {
+        legs.push([[lean * 0.4, hip], [-5, -9], [-11, -11]]);
+        legs.push([[lean * 0.4, hip], [-6, -6], [-13, -5]]);
     } else if (airborne) {
         const tuck = b.vy < 0 ? 1 : 0.4;
         legs.push([[0, hip], [5, -8 * tuck - 4], [8, -3]]);
         legs.push([[0, hip], [-4, -6], [-7, -8 * tuck]]);
     } else if (speed > 14) {
-        const s = Math.sin(phase) * 7;
+        const sw = Math.sin(phase) * 7;
         const lift = Math.max(0, Math.cos(phase)) * 5;
-        legs.push([[0, hip], [s * 0.5, -7], [s, -lift]]);
-        legs.push([[0, hip], [-s * 0.5, -7], [-s, -Math.max(0, -Math.cos(phase)) * 5]]);
+        legs.push([[0, hip], [sw * 0.5, -7], [sw, -lift]]);
+        legs.push([[0, hip], [-sw * 0.5, -7], [-sw, -Math.max(0, -Math.cos(phase)) * 5]]);
     } else {
         const idle = Math.sin(time * 2.2) * 0.5;
-        legs.push([[0, hip], [2, -7], [3, 0 + idle]]);
+        legs.push([[0, hip], [2, -7], [3, idle]]);
         legs.push([[0, hip], [-2, -7], [-3.5, 0]]);
     }
     ctx.strokeStyle = HERO.rim;
     ctx.lineWidth = lw(2.4);
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     for (const leg of legs) {
         ctx.beginPath();
         ctx.moveTo(leg[0][0], leg[0][1]);
@@ -182,27 +214,28 @@ function drawHero(ctx, p, glowPass, time) {
         ctx.lineTo(leg[2][0], leg[2][1]);
         ctx.stroke();
     }
+    ctx.lineCap = 'butt';
 
-    /* плащ — треплется от скорости, а в висе просто свисает */
-    const flap = hanging ? 0 : Math.sin(time * 9 + phase) * (2 + speed * 0.04);
-    const tail = [
-        [-1, shoulder + 1],
-        [-9 - speed * 0.03, shoulder + 7 + flap],
-        [-12 - speed * 0.05, hip + 7 - flap],
-        [-4, hip + 3],
-        [-1, hip - 1],
-    ];
-    polygon(ctx, tail);
-    if (solid) {
-        ctx.fillStyle = HERO.body;
-        ctx.fill();
-    }
+    /* Шарф — две ленты позади. Длина от скорости, волна от времени: по нему
+       читается инерция там, где силуэт слишком мал для развёрнутой позы. */
+    const drag = Math.min(26, 8 + speed * 0.07 + (dashing ? 16 : 0));
     ctx.strokeStyle = HERO.trim;
-    ctx.lineWidth = lw(1.6);
-    ctx.stroke();
+    ctx.lineWidth = lw(2);
+    for (let i = 0; i < 2; i += 1) {
+        const wave = Math.sin(time * 7 + i * 2.1 + phase) * (2 + speed * 0.02);
+        const rise = hanging || onWall ? 6 : 0;
+        ctx.beginPath();
+        ctx.moveTo(-1 + lean * 0.5, shoulder + 1 + i);
+        ctx.quadraticCurveTo(
+            -drag * 0.5, shoulder + 2 + wave + i * 3 + rise,
+            -drag, shoulder + 5 + wave * 1.7 + i * 4 + rise,
+        );
+        ctx.stroke();
+    }
 
     /* корпус */
-    polygon(ctx, [[-3.4, hip + 1], [3.4, hip + 1], [2.6, shoulder], [-2.6, shoulder]]);
+    const sx = lean * 0.6;
+    polygon(ctx, [[-3.4, hip + 1], [3.4, hip + 1], [sx + 2.6, shoulder], [sx - 2.6, shoulder]]);
     if (solid) {
         ctx.fillStyle = HERO.body;
         ctx.fill();
@@ -211,65 +244,76 @@ function drawHero(ctx, p, glowPass, time) {
     ctx.lineWidth = lw(2);
     ctx.stroke();
 
-    /* голова, треуголка, визор */
-    ctx.beginPath();
-    ctx.arc(0.5, headY, 4.6, 0, Math.PI * 2);
-    if (solid) {
-        ctx.fillStyle = HERO.body;
-        ctx.fill();
-    }
-    ctx.strokeStyle = HERO.rim;
-    ctx.lineWidth = lw(1.7);
-    ctx.stroke();
-
+    /* капюшон: клин с задним хвостом вместо головы-шара */
+    const hx = lean;
     polygon(ctx, [
-        [-8.5, headY - 3.5], [-4, headY - 8], [0.5, headY - 5.2],
-        [5, headY - 8], [9.5, headY - 3.5], [0.5, headY - 2],
+        [hx - 4.6, headY + 4], [hx - 6, headY - 2.5], [hx - 1.5, headY - 7.5],
+        [hx + 3.6, headY - 6], [hx + 5.4, headY - 0.5], [hx + 4, headY + 4],
     ]);
     if (solid) {
         ctx.fillStyle = HERO.body;
         ctx.fill();
     }
-    ctx.strokeStyle = HERO.trim;
-    ctx.lineWidth = lw(1.7);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(1.5, headY - 0.5);
-    ctx.lineTo(5.4, headY - 0.5);
-    ctx.strokeStyle = '#7dfcff';
     ctx.lineWidth = lw(1.8);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hx - 5.6, headY - 2);
+    ctx.lineTo(hx - 11 - drag * 0.15, headY + 2.5 + Math.sin(time * 7) * 1.5);
+    ctx.strokeStyle = HERO.trim;
+    ctx.lineWidth = lw(1.6);
+    ctx.stroke();
 
-    /* рука и сабля */
+    /* визор */
+    ctx.beginPath();
+    ctx.moveTo(hx + 0.6, headY - 0.6);
+    ctx.lineTo(hx + 5, headY - 1.4);
+    ctx.strokeStyle = '#7dfcff';
+    ctx.lineWidth = lw(2);
+    ctx.stroke();
+
+    /* руки, когти и катана */
     const angle = bladeAngle(p.attack);
-    const hand = hanging ? [1, shoulder - 6] : [4.5, shoulder + 3];
-    if (!hanging) {
+    if (hanging || climbing || onWall) {
+        // Когти. Название игры про них: за кромку держатся железом, а не пальцами.
+        const reach = onWall
+            ? [[6, shoulder - 5], [7, shoulder + 4]]
+            : [[-1, shoulder - 7], [3, shoulder - 7]];
+        ctx.strokeStyle = HERO.rim;
+        ctx.lineWidth = lw(2);
         ctx.beginPath();
-        ctx.moveTo(2, shoulder + 1);
+        for (const [ax, ay] of reach) {
+            ctx.moveTo(0, shoulder + 1);
+            ctx.lineTo(ax, ay);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = '#bff4ff';
+        ctx.lineWidth = lw(1.8);
+        ctx.beginPath();
+        for (const [ax, ay] of reach) {
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(ax + 3, ay - 2.5);
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(ax + 3.5, ay + 0.5);
+        }
+        ctx.stroke();
+        drawBlade(ctx, [-3, shoulder + 3], 2.5, 17, HERO.trim, lw(1.6), null);
+    } else {
+        const hand = sliding ? [8, hip - 2] : [sx + 4.5, shoulder + 3];
+        ctx.beginPath();
+        ctx.moveTo(sx + 2, shoulder + 1);
         ctx.lineTo(hand[0], hand[1]);
         ctx.strokeStyle = HERO.rim;
         ctx.lineWidth = lw(2);
         ctx.stroke();
         const trail = p.attack.phase === 'active' ? -2.1 : null;
-        drawBlade(ctx, hand, angle, 22, HERO.blade, lw(2.2), trail);
-    } else {
-        // В висе обе руки на кромке — сабля убрана за спину.
-        ctx.strokeStyle = HERO.rim;
-        ctx.lineWidth = lw(2);
-        ctx.beginPath();
-        ctx.moveTo(-2, shoulder + 1);
-        ctx.lineTo(-1, shoulder - 7);
-        ctx.moveTo(2, shoulder + 1);
-        ctx.lineTo(3, shoulder - 7);
-        ctx.stroke();
-        drawBlade(ctx, [-3, shoulder + 2], 2.4, 18, HERO.trim, lw(1.6), null);
+        const rest = sliding ? 2.6 : dashing ? 2.9 : angle;
+        drawBlade(ctx, hand, p.attack.phase === 'none' ? rest : angle, 22, HERO.blade, lw(2.2), trail);
     }
 
     ctx.restore();
 }
 
-function drawCorsair(ctx, e, glowPass, time) {
+function drawEnforcer(ctx, e, glowPass, time) {
     const b = e.body;
     const lw = (w) => (glowPass ? w * HALO : w);
     const solid = !glowPass;
@@ -299,7 +343,7 @@ function drawCorsair(ctx, e, glowPass, time) {
     ctx.moveTo(0, hip); ctx.lineTo(-s * 0.5, -7); ctx.lineTo(-s, 0);
     ctx.stroke();
 
-    /* корпус — шире героя: корсар тяжелее и читается как стена */
+    /* корпус — шире героя: страж тяжелее и читается как стена */
     polygon(ctx, [[-4.4, hip + 1], [4.4, hip + 1], [3.4, shoulder], [-3.4, shoulder]]);
     if (solid) {
         ctx.fillStyle = FOE.body;
@@ -536,7 +580,7 @@ function paintWorld(ctx, world, cam, glowPass) {
     drawTiles(ctx, world, cam, glowPass);
     drawExit(ctx, world, glowPass, world.time);
     drawLoot(ctx, world, glowPass);
-    for (const e of world.enemies) drawCorsair(ctx, e, glowPass, world.time);
+    for (const e of world.enemies) drawEnforcer(ctx, e, glowPass, world.time);
 
     const p = world.player;
     const blink = p.invuln > 0 && Math.floor(p.invuln * 22) % 2 === 0;
@@ -603,7 +647,7 @@ function drawDebug(ctx, world) {
         ctx.strokeStyle = '#ff8800';
         ctx.strokeRect(e.body.x - e.body.w / 2, e.body.y - e.body.h, e.body.w, e.body.h);
         if (e.state === 'active') {
-            const r = corsairAttackRect(e);
+            const r = enforcerAttackRect(e);
             ctx.strokeStyle = '#ff0044';
             ctx.strokeRect(r.x, r.y, r.w, r.h);
         }
@@ -662,4 +706,4 @@ export function render(r, world, cam) {
     drawHud(ctx, world);
 }
 
-export { HERO, FOE, LEDGE, CORSAIR };
+export { HERO, FOE, LEDGE, ENFORCER };
