@@ -12,7 +12,7 @@
  */
 
 import { TILE, VIEW, SWORD, ENFORCER, LEDGE } from './tuning.js';
-import { SOLID, ONEWAY, tileAt } from './level.js';
+import { SOLID, ONEWAY, tileAt, levelPixelHeight } from './level.js';
 import { attackRect } from './player.js';
 import { enforcerAttackRect, sightCone, moodOf } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
@@ -117,6 +117,8 @@ export function createRenderer(canvas) {
         scale: 1,
         /** Набор тайлов района. null — рисуем встроенным способом. */
         tiles: null,
+        /** Нарисованные слои параллакса. null — генерируем сами. */
+        art: null,
         debug: false,
     };
 }
@@ -851,7 +853,8 @@ export function render(r, world, cam) {
     gctx.setTransform(1, 0, 0, 1, 0, 0);
     gctx.clearRect(0, 0, glow.width, glow.height);
 
-    drawBackdrop(ctx, r.layers, cam.x + cam.shakeX, cam.y + cam.shakeY);
+    const camMaxY = Math.max(0, levelPixelHeight(world.level) - VIEW.h);
+    drawBackdrop(ctx, r.layers, cam.x + cam.shakeX, cam.y + cam.shakeY, r.art, camMaxY);
 
     const ox = -Math.round(cam.x + cam.shakeX);
     const oy = -Math.round(cam.y + cam.shakeY);

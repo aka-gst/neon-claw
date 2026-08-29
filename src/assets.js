@@ -70,6 +70,27 @@ export async function loadTileset(district) {
     }
 }
 
+function loadImage(src) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+}
+
+/**
+ * Слои параллакса района. Отсутствие любого из трёх отменяет весь набор:
+ * два нарисованных слоя поверх одного сгенерированного выглядят хуже, чем
+ * три сгенерированных, — стили не смешиваются, а спорят.
+ */
+export async function loadBackdrop(district) {
+    const layers = await Promise.all(
+        ['far', 'mid', 'near'].map((n) => loadImage(`./assets/backdrop/${district}-${n}.png`)),
+    );
+    return layers.every(Boolean) ? layers : null;
+}
+
 /**
  * Выбор варианта по клетке. Детерминированный: стена должна выглядеть
  * одинаково при каждом входе в комнату, иначе она мерцает при скролле.

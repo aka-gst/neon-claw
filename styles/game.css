@@ -62,8 +62,12 @@ body {
     padding: 1em 2em;
     text-align: center;
     overflow-y: auto;
+    /* Ключевой арт нарисован с пустой серединой — ровно под эти экраны.
+       Градиент поверх дожимает края, чтобы текст читался при любом кадре. */
     background:
-        radial-gradient(circle at 50% 45%, rgba(10, 12, 32, 0.72), rgba(3, 4, 9, 0.94));
+        radial-gradient(circle at 50% 45%, rgba(10, 12, 32, 0.78), rgba(3, 4, 9, 0.96)),
+        url('../assets/key/title.png') center / cover no-repeat,
+        #05060f;
     backdrop-filter: blur(3px);
     /* Вся вёрстка экранов считается от этого размера. Рамка бывает какой
        угодно высоты, а кнопка «начать» обязана оставаться в кадре — это

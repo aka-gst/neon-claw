@@ -156,13 +156,40 @@ function makeNear(random) {
 
 export function createBackdrop(seed = 20260829) {
     return [
-        { canvas: makeFar(rng(seed)), px: 0.12, py: 0.05 },
-        { canvas: makeMid(rng(seed + 991)), px: 0.30, py: 0.11 },
-        { canvas: makeNear(rng(seed + 7717)), px: 0.55, py: 0.22 },
+        { canvas: makeFar(rng(seed)), px: 0.12, py: 0.05, dy: -14, haze: 0.30 },
+        { canvas: makeMid(rng(seed + 991)), px: 0.30, py: 0.11, dy: -4, haze: 0.20 },
+        { canvas: makeNear(rng(seed + 7717)), px: 0.55, py: 0.22, dy: 12, haze: 0.08 },
     ];
 }
 
-export function drawBackdrop(ctx, layers, camX, camY) {
+/**
+ * Нарисованный слой кладётся в половину своего размера: исходник в 1920×540
+ * рассчитан на два экрана по высоте, а показывать надо один. Уменьшение
+ * вдвое заодно делает кромки чётче, чем они были в файле.
+ */
+function drawArtLayer(ctx, art, layer, camX, camY, camMaxY) {
+    const w = art.width / 2;
+    const h = art.height / 2;
+    const offset = ((-camX * layer.px) % w + w) % w;
+    // Отсчёт от НИЗА уровня, а не от нуля камеры: игра идёт по земле, и
+    // город должен стоять на месте именно там, поднимаясь, когда лезешь вверх.
+    const y = VIEW.h - h + (camMaxY - camY) * layer.py + (layer.dy ?? 0);
+    for (let x = offset - w; x < VIEW.w; x += w) ctx.drawImage(art, x, y, w, h);
+}
+
+/**
+ * Воздушная перспектива. Нарисованные слои почти черны — как и небо, — и
+ * без дымки силуэты в них не читаются вовсе. Пелена кладётся ПОСЛЕ каждого
+ * слоя, поэтому накапливается: дальнее выцветает сильнее ближнего, и
+ * глубина получается сама, без единого градиента внутри объектов.
+ */
+function haze(ctx, amount) {
+    if (!amount) return;
+    ctx.fillStyle = `rgba(38, 28, 74, ${amount})`;
+    ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+}
+
+export function drawBackdrop(ctx, layers, camX, camY, art = null, camMaxY = 0) {
     const sky = ctx.createLinearGradient(0, 0, 0, VIEW.h);
     sky.addColorStop(0, '#05060f');
     sky.addColorStop(0.55, '#0a0b1c');
@@ -170,13 +197,18 @@ export function drawBackdrop(ctx, layers, camX, camY) {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
-    for (const layer of layers) {
+    layers.forEach((layer, i) => {
+        if (art?.[i]) {
+            drawArtLayer(ctx, art[i], layer, camX, camY, camMaxY);
+            haze(ctx, layer.haze);
+            return;
+        }
         const offset = ((-camX * layer.px) % LAYER_W + LAYER_W) % LAYER_W;
-        const y = -camY * layer.py;
+        const y = (camMaxY - camY) * layer.py;
         ctx.drawImage(layer.canvas, offset - LAYER_W, y);
         ctx.drawImage(layer.canvas, offset, y);
         if (offset + LAYER_W < VIEW.w) ctx.drawImage(layer.canvas, offset + LAYER_W, y);
-    }
+    });
 }
 
 export { LAYER_W };

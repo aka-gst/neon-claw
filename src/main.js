@@ -13,7 +13,7 @@ import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createAudio } from './audio.js';
 import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
-import { loadTileset } from './assets.js';
+import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
 
@@ -25,13 +25,17 @@ const renderer = createRenderer(canvas);
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Тайлсет подгружается фоном: до его прихода игра рисует встроенным
-// способом и работает точно так же. Ассет — это украшение, а не условие.
-loadTileset('roofs').then((tiles) => { renderer.tiles = tiles; });
 
 let modeId = DEFAULT_MODE;
 let levelId = DEFAULT_LEVEL;
 let world = createWorld(getLevel(levelId).rows, modeId);
+
+// Ассеты подгружаются фоном: до их прихода игра рисует встроенным способом
+// и работает точно так же. Украшение, а не условие — поэтому и грузится
+// после того, как мир уже собран.
+const district = getLevel(levelId).district;
+loadTileset(district).then((tiles) => { renderer.tiles = tiles; });
+loadBackdrop(district).then((art) => { renderer.art = art; });
 let camera = createCamera(world);
 let screen = 'title';
 
