@@ -14,15 +14,6 @@
 <main class="frame">
     <canvas id="screen" width="960" height="540" tabindex="0" aria-label="Игровое поле"></canvas>
 
-    <div id="touch" hidden aria-hidden="true">
-        <div class="tpad" data-touch="pad"><span>вести пальцем · чуть-чуть — красться</span></div>
-        <div class="tacts">
-            <div class="tbtn" data-touch="dash">рывок</div>
-            <div class="tbtn" data-touch="attack">катана</div>
-            <div class="tbtn tbig" data-touch="jump">прыжок</div>
-        </div>
-    </div>
-
     <div id="overlay" data-show="title">
         <section data-screen="title">
             <p class="kicker">вертикальный срез</p>
@@ -88,6 +79,21 @@
         </section>
     </div>
 </main>
+
+<!--
+  Блок управления стоит РЯДОМ с рамкой, а не внутри неё. У рамки
+  overflow: hidden, и в портрете кнопки, вставшие под кадром, просто
+  обрезались бы её краем — измеримые, видимые по стилям и невидимые
+  на экране.
+-->
+<div id="touch" hidden aria-hidden="true">
+    <div class="tpad" data-touch="pad"><span>вести пальцем · чуть-чуть — красться</span></div>
+    <div class="tacts">
+        <div class="tbtn" data-touch="dash">рывок</div>
+        <div class="tbtn" data-touch="attack">катана</div>
+        <div class="tbtn tbig" data-touch="jump">прыжок</div>
+    </div>
+</div>
 
 <script type="module" src="./src/main.js"></script>
 </body>
