@@ -228,9 +228,6 @@ window.addEventListener('keydown', (event) => {
     audio.unlock();
     if (event.code === 'KeyM') audio.toggle();
     if (event.code === 'F2') renderer.debug = !renderer.debug;
-    if (event.code === 'KeyL') {
-        setLevel(LEVEL_ORDER[(LEVEL_ORDER.indexOf(levelId) + 1) % LEVEL_ORDER.length]);
-    }
     if (screen === 'title' && (event.code === 'Space' || event.code === 'Enter')) {
         event.preventDefault();
         restart();

@@ -48,7 +48,7 @@ const FOE = {
  */
 const ROLE = {
     edge:   { stroke: '#22e8ff',                    width: 2.2, glow: true },
-    side:   { stroke: 'rgba(124, 77, 255, 0.55)',   width: 1.4, glow: true },
+    side:   { stroke: 'rgba(196, 122, 96, 0.55)',   width: 1.4, glow: true },
     body:   { stroke: 'rgba(60, 90, 150, 0.2)',     width: 1,   fill: '#0c1024', glow: false },
     // Золото значит «возьми» и больше ничего. Мелочь внутри массива —
     // холодная: иначе весь бетон читается как рассыпанная добыча.
@@ -578,7 +578,9 @@ function drawTiles(ctx, world, cam, glowPass, tiles) {
              * с проходом под ней выходила чёрной на чёрном: игрок утыкался
              * в стену, которой не видел, и это читалось как поломка.
              */
-            ctx.strokeStyle = 'rgba(140, 100, 255, 0.8)';
+            // Грани, об которые упрёшься, — медные. Циан оставлен тому,
+            // на что можно встать: греть значение цвета нельзя.
+            ctx.strokeStyle = 'rgba(198, 128, 96, 0.8)';
             ctx.lineWidth = lw(1.6);
             if (tileAt(level, col - 1, row) !== SOLID) {
                 ctx.beginPath();

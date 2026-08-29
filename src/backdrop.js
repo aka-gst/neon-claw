@@ -89,8 +89,8 @@ function makeFar(random) {
 
     // Зарево над горизонтом — источник всего света в кадре.
     const glow = ctx.createRadialGradient(LAYER_W * 0.35, VIEW.h * 0.72, 12, LAYER_W * 0.35, VIEW.h * 0.72, 380);
-    glow.addColorStop(0, 'rgba(255, 45, 149, 0.34)');
-    glow.addColorStop(0.45, 'rgba(124, 77, 255, 0.16)');
+    glow.addColorStop(0, 'rgba(255, 132, 87, 0.30)');
+    glow.addColorStop(0.45, 'rgba(168, 77, 200, 0.16)');
     glow.addColorStop(1, 'rgba(5, 6, 15, 0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, LAYER_W, VIEW.h);
@@ -185,15 +185,24 @@ function drawArtLayer(ctx, art, layer, camX, camY, camMaxY) {
  */
 function haze(ctx, amount) {
     if (!amount) return;
-    ctx.fillStyle = `rgba(38, 28, 74, ${amount})`;
+    // Пелена тёплая: она же подкрашивает нарисованные слои, и от неё
+    // зависит, читается город медью или холодной сталью.
+    ctx.fillStyle = `rgba(74, 44, 72, ${amount})`;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 }
 
 export function drawBackdrop(ctx, layers, camX, camY, art = null, camMaxY = 0) {
+    /*
+     * Небо тёплое книзу. «Пираты тёмной воды» и «Планета сокровищ» —
+     * латунь, бирюза и глубокий пурпур, а не холодный синий; и вся
+     * атмосфера делается здесь, не трогая ни одного игрового цвета.
+     * Циан по-прежнему значит «сюда можно встать» — семантику греть нельзя.
+     */
     const sky = ctx.createLinearGradient(0, 0, 0, VIEW.h);
-    sky.addColorStop(0, '#05060f');
-    sky.addColorStop(0.55, '#0a0b1c');
-    sky.addColorStop(1, '#120a22');
+    sky.addColorStop(0, '#04050e');
+    sky.addColorStop(0.42, '#0b0a1e');
+    sky.addColorStop(0.78, '#1a0e24');
+    sky.addColorStop(1, '#2a1420');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 

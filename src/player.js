@@ -233,10 +233,12 @@ function vertical(p, intent, dt) {
 
 function tryWall(p, level, intent) {
     const b = p.body;
-    if (b.onGround || b.vy < 0 || p.state !== 'move') return false;
+    // Ловим и на взлёте тоже: требовать попадания в апекс — жестоко, а
+    // именно на этом зигзаг у живого игрока и разваливался.
+    if (b.onGround || b.vy < -WALL.catchRise || p.state !== 'move') return false;
     const side = wallSide(level, b);
     if (side === 0) return false;
-    // Прижаться можно только сознательно: клавиша в сторону стены.
+    // Прижаться — сознательное действие: клавиша в сторону стены.
     if (!((side > 0 && intent.right) || (side < 0 && intent.left))) return false;
 
     p.state = 'wall';
@@ -254,7 +256,10 @@ function updateWall(p, level, intent, dt) {
     p.buffer = Math.max(0, p.buffer - dt);
     if (intent.jumpDown) p.buffer = PLAYER.jumpBuffer;
 
-    const holding = (p.wall > 0 && intent.right) || (p.wall < 0 && intent.left);
+    // Держаться не надо: прижался — висишь, пока сам не оттолкнёшься или
+    // не поведёшь в другую сторону. Требование зажимать клавишу к стене
+    // съедало палец, который в этот же момент нужен на прыжке.
+    const leaving = (p.wall > 0 && intent.left) || (p.wall < 0 && intent.right);
     const stillWall = wallSide(level, b) === p.wall;
 
     if (p.buffer > 0) {
@@ -271,9 +276,10 @@ function updateWall(p, level, intent, dt) {
         return;
     }
 
-    if (!holding || !stillWall) {
+    if (leaving || !stillWall) {
+        // Сторону НЕ обнуляем: на ней держится койот-окно, а срыв со
+        // стены — ровно тот случай, ради которого оно и заведено.
         p.state = 'move';
-        p.wall = 0;
         return;
     }
 
@@ -314,6 +320,8 @@ function tryDash(p, intent, level) {
     p.body.vy = 0;
     p.attack.phase = 'none';
     p.anim.dash = 0;
+    // Перекат: сквозь замах можно пройти, но только в начале рывка.
+    p.invuln = Math.max(p.invuln, DASH.invuln);
     p.sfx.push('dash');
     return true;
 }
@@ -516,10 +524,14 @@ export function updatePlayer(p, level, intent, dt) {
     if (p.body.onGround) {
         p.cutUsed = true;
         p.dashReady = true;
+        p.wall = 0;
     }
 
-    if (p.state === 'move' && p.body.vy > 0) {
-        if (!tryLedge(p, level, intent)) tryWall(p, level, intent);
+    if (p.state === 'move') {
+        // Кромку ловим только на падении — она про руки. Стену и на
+        // взлёте: требовать попадания в апекс жестоко.
+        const caught = p.body.vy > 0 && tryLedge(p, level, intent);
+        if (!caught && p.body.vy > -WALL.catchRise) tryWall(p, level, intent);
     }
 
     if (p.body.onGround && Math.abs(p.body.vx) > 12) p.anim.run += Math.abs(p.body.vx) * dt * 0.09;

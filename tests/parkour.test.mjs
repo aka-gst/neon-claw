@@ -76,6 +76,47 @@ test('толчок от стены уносит в сторону, и стена
     assert.equal(player.facing, -1, 'герой не развернулся от стены');
 });
 
+test('на стене не надо держаться: прижался — висишь', () => {
+    const { level, player } = atWall();
+    run(level, player, { right: true }, 0.1);
+    assert.equal(player.state, 'wall');
+
+    // Клавишу отпустили — палец нужен на прыжке, а не на стене.
+    run(level, player, {}, 0.3);
+    assert.equal(player.state, 'wall', 'герой отвалился, едва отпустили клавишу');
+
+    // А вот увести в другую сторону — это сознательный уход.
+    run(level, player, { left: true }, 0.05);
+    assert.equal(player.state, 'move');
+});
+
+test('прижаться можно и на взлёте, не только на падении', () => {
+    const level = parseLevel(SHAFT);
+    const player = createPlayer(level.spawn);
+    player.body.x = 5 * TILE - PLAYER.w / 2 - 1;
+    player.body.y = 4 * TILE;
+    player.body.vy = -120;   // ещё летит вверх
+    player.facing = 1;
+    run(level, player, { right: true }, 0.05);
+    assert.equal(player.state, 'wall', 'на взлёте стена не ловит — нужен точный апекс');
+});
+
+test('сорвался со стены — толчок ещё засчитывается', () => {
+    const { level, player } = atWall();
+    run(level, player, { right: true }, 0.1);
+    assert.equal(player.state, 'wall');
+
+    // Уводим от стены и жмём прыжок с опозданием.
+    run(level, player, { left: true }, 0.02);
+    assert.equal(player.state, 'move');
+    run(level, player, {}, WALL.coyote * 0.6);
+    // Кнопку надо и удерживать: иначе сработает обрезание высоты, и
+    // тест будет мерить не толчок, а короткий прыжок.
+    run(level, player, { jumpHeld: true }, 0.02, { jump: true });
+    assert.ok(player.body.vy < -WALL.jumpY * 0.8,
+        `опоздавший толчок не сработал: vy ${player.body.vy.toFixed(0)}`);
+});
+
 test('стена возвращает рывок — на ней и держится зигзаг вверх', () => {
     const { level, player } = atWall();
     player.dashReady = false;
