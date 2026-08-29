@@ -14,8 +14,9 @@
 import { TILE, VIEW, SWORD, ENFORCER, LEDGE } from './tuning.js';
 import { SOLID, ONEWAY, tileAt } from './level.js';
 import { attackRect } from './player.js';
-import { enforcerAttackRect } from './enemy.js';
+import { enforcerAttackRect, sightCone } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
+import { variantAt } from './assets.js';
 
 const GLOW_SCALE = 2;
 /**
@@ -38,6 +39,49 @@ const FOE = {
     trim: '#ff9f1c',
     guard: '#9ad8ff',
 };
+
+/**
+ * Роль → как её рисовать. Ассеты не знают цветов: они называют смысл, а
+ * палитра живёт здесь. Поэтому сменить весь вид района — это правка одной
+ * таблицы, а не пятнадцати файлов.
+ */
+const ROLE = {
+    edge:   { stroke: '#22e8ff',                    width: 2.2, glow: true },
+    side:   { stroke: 'rgba(124, 77, 255, 0.55)',   width: 1.4, glow: true },
+    body:   { stroke: 'rgba(60, 90, 150, 0.2)',     width: 1,   fill: '#0c1024', glow: false },
+    // Золото значит «возьми» и больше ничего. Мелочь внутри массива —
+    // холодная: иначе весь бетон читается как рассыпанная добыча.
+    detail: { stroke: 'rgba(120, 190, 240, 0.34)',  width: 1,   fill: 'rgba(96, 158, 214, 0.2)', glow: false },
+    wire:   { stroke: 'rgba(130, 170, 225, 0.55)',  width: 1.2, glow: false },
+    sign:   { stroke: '#ff2d95',                    width: 1.6, fill: 'rgba(255, 45, 149, 0.35)', glow: true },
+    hot:    { stroke: '#ff3b5c',                    width: 2,   fill: 'rgba(255, 59, 92, 0.25)', glow: true },
+    loot:   { stroke: '#ffc857',                    width: 2,   glow: true },
+    data:   { stroke: '#4dffb8',                    width: 2,   glow: true },
+    foe:    { stroke: '#ff3b5c',                    width: 1.6, glow: true },
+};
+
+/** Проигрывание списка примитивов из ассета в координатах клетки. */
+function paintOps(ctx, ops, ox, oy, glowPass) {
+    for (const op of ops) {
+        const style = ROLE[op.role] ?? ROLE.detail;
+        if (glowPass && !style.glow) continue;
+        ctx.strokeStyle = style.stroke;
+        ctx.fillStyle = style.fill ?? style.stroke;
+        ctx.lineWidth = (op.width ?? style.width) * (glowPass ? HALO : 1);
+        ctx.beginPath();
+        if (op.op === 'line' || op.op === 'poly') {
+            ctx.moveTo(ox + op.pts[0][0], oy + op.pts[0][1]);
+            for (let i = 1; i < op.pts.length; i += 1) ctx.lineTo(ox + op.pts[i][0], oy + op.pts[i][1]);
+            if (op.op === 'poly' && op.close) ctx.closePath();
+        } else if (op.op === 'rect') {
+            ctx.rect(ox + op.x, oy + op.y, op.w, op.h);
+        } else if (op.op === 'arc') {
+            ctx.arc(ox + op.cx, oy + op.cy, op.r, op.a0, op.a1);
+        }
+        if (op.fill && !glowPass) ctx.fill();
+        else ctx.stroke();
+    }
+}
 
 const canFilter = (() => {
     if (typeof document === 'undefined') return false;
@@ -70,6 +114,8 @@ export function createRenderer(canvas) {
         scan: scanlinePattern(ctx),
         /** Плотность пикселей: холст логический, а буфер может быть крупнее. */
         scale: 1,
+        /** Набор тайлов района. null — рисуем встроенным способом. */
+        tiles: null,
         debug: false,
     };
 }
@@ -417,7 +463,62 @@ function drawEnforcer(ctx, e, glowPass, time) {
 
 /* ------------------------------------------------------------------- сцена */
 
-function drawTiles(ctx, world, cam, glowPass) {
+/**
+ * Взгляд стража. Рисуется ровно та область, которую проверяет `sees` —
+ * картинка, которая врёт про правило, хуже отсутствующей: игрок построит
+ * обход по ней и не поймёт, почему его увидели.
+ */
+function drawCones(ctx, world, glowPass) {
+    for (const e of world.enemies) {
+        if (e.state === 'dead') continue;
+        const { eye, far, near, half, facing } = sightCone(e, world.level);
+        const tip = eye.x + facing * far;
+        const hot = e.alert > 0;
+
+        if (!glowPass) {
+            const grad = ctx.createLinearGradient(eye.x, eye.y, tip, eye.y);
+            grad.addColorStop(0, hot ? 'rgba(255, 59, 92, 0.22)' : 'rgba(125, 252, 255, 0.13)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(eye.x, eye.y - near);
+            ctx.lineTo(tip, eye.y - half);
+            ctx.lineTo(tip, eye.y + half);
+            ctx.lineTo(eye.x, eye.y + near);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.strokeStyle = hot ? 'rgba(255, 59, 92, 0.55)' : 'rgba(125, 252, 255, 0.3)';
+        ctx.lineWidth = glowPass ? 1.8 : 0.9;
+        ctx.beginPath();
+        ctx.moveTo(eye.x, eye.y - near);
+        ctx.lineTo(tip, eye.y - half);
+        ctx.moveTo(eye.x, eye.y + near);
+        ctx.lineTo(tip, eye.y + half);
+        ctx.stroke();
+    }
+}
+
+function drawCheckpoints(ctx, world, glowPass, time) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    world.level.checkpoints.forEach((c, i) => {
+        const live = world.reached.has(i);
+        const h = TILE * 1.6;
+        ctx.strokeStyle = live ? '#4dffb8' : 'rgba(77, 255, 184, 0.3)';
+        ctx.lineWidth = lw(live ? 2.2 : 1.4);
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y);
+        ctx.lineTo(c.x, c.y - h);
+        ctx.stroke();
+        const pulse = live ? 3 + Math.sin(time * 4 + i) * 1.5 : 2.5;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - h, pulse, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+}
+
+function drawTiles(ctx, world, cam, glowPass, tiles) {
     const level = world.level;
     const lw = (w) => (glowPass ? w * HALO : w);
     const c0 = Math.max(0, Math.floor(cam.x / TILE) - 1);
@@ -443,6 +544,8 @@ function drawTiles(ctx, world, cam, glowPass) {
                     ctx.fillStyle = 'rgba(255, 45, 149, 0.10)';
                     ctx.fillRect(x, y + 4, TILE, 5);
                 }
+                const bars = tiles?.kinds?.oneway;
+                if (bars) paintOps(ctx, bars[variantAt(col, row, bars.length)], x, y, glowPass);
                 continue;
             }
 
@@ -454,8 +557,9 @@ function drawTiles(ctx, world, cam, glowPass) {
                 ctx.lineWidth = 1;
                 ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
 
-                // Редкие окна внутри массива — чтобы камень читался как здание.
-                if (!openAbove && (col * 7 + row * 13) % 11 === 0) {
+                // Встроенные окна нужны, только пока нет тайлсета: с ним
+                // вся мелочь приходит из ассета, и дублировать её нельзя.
+                if (!tiles && !openAbove && (col * 7 + row * 13) % 11 === 0) {
                     ctx.fillStyle = (col + row) % 3 === 0 ? 'rgba(255, 200, 87, 0.5)' : 'rgba(34, 232, 255, 0.35)';
                     ctx.fillRect(x + 8, y + 8, 5, 7);
                 }
@@ -484,6 +588,19 @@ function drawTiles(ctx, world, cam, glowPass) {
                 ctx.strokeStyle = 'rgba(124, 77, 255, 0.55)';
                 ctx.lineWidth = lw(1.4);
                 ctx.stroke();
+            }
+
+            if (!tiles) continue;
+            const kind = openAbove ? 'solid.top' : 'solid.body';
+            const list = tiles.kinds[kind];
+            if (list) paintOps(ctx, list[variantAt(col, row, list.length)], x, y, glowPass);
+
+            // Декор ставится в пустую клетку над поверхностью: он стоит НА
+            // крыше, а не внутри неё. Редко — иначе район превращается в свалку.
+            const props = tiles.kinds.prop;
+            if (openAbove && props && variantAt(col + 977, row, 6) === 0
+                && tileAt(level, col, row - 1) === 0) {
+                paintOps(ctx, props[variantAt(col, row + 31, props.length)], x, y - TILE, glowPass);
             }
         }
     }
@@ -576,8 +693,10 @@ function drawSparks(ctx, world, glowPass) {
     ctx.lineCap = 'butt';
 }
 
-function paintWorld(ctx, world, cam, glowPass) {
-    drawTiles(ctx, world, cam, glowPass);
+function paintWorld(ctx, world, cam, glowPass, tiles) {
+    drawTiles(ctx, world, cam, glowPass, tiles);
+    drawCones(ctx, world, glowPass);
+    drawCheckpoints(ctx, world, glowPass, world.time);
     drawExit(ctx, world, glowPass, world.time);
     drawLoot(ctx, world, glowPass);
     for (const e of world.enemies) drawEnforcer(ctx, e, glowPass, world.time);
@@ -618,6 +737,18 @@ function drawHud(ctx, world) {
     ctx.fillStyle = 'rgba(125, 252, 255, 0.55)';
     ctx.font = '600 12px "Rajdhani", system-ui, sans-serif';
     ctx.fillText(`ТРОФЕИ ${world.collected}/${world.totalLoot}`, VIEW.w - 22, 38);
+
+    // Режим и попытки — это приборы для сравнения, а не украшение:
+    // без них два прохода подряд не отличить друг от друга.
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.7)';
+    ctx.fillText(world.mode.name.toUpperCase(), 22, 38);
+    ctx.fillStyle = 'rgba(125, 252, 255, 0.4)';
+    ctx.fillText(`ПОПЫТКА ${world.attempts}`, 22, 52);
+    if (world.takedowns > 0) {
+        ctx.fillStyle = 'rgba(77, 255, 184, 0.7)';
+        ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 66);
+    }
 
     if (world.notice) {
         const alpha = Math.min(1, world.notice.t * 2);
@@ -670,8 +801,8 @@ export function render(r, world, cam) {
     ctx.setTransform(s, 0, 0, s, ox * s, oy * s);
     gctx.setTransform(1 / GLOW_SCALE, 0, 0, 1 / GLOW_SCALE, ox / GLOW_SCALE, oy / GLOW_SCALE);
 
-    paintWorld(gctx, world, cam, true);
-    paintWorld(ctx, world, cam, false);
+    paintWorld(gctx, world, cam, true, r.tiles);
+    paintWorld(ctx, world, cam, false, r.tiles);
     if (r.debug) drawDebug(ctx, world);
 
     ctx.setTransform(s, 0, 0, s, 0, 0);
@@ -702,6 +833,11 @@ export function render(r, world, cam) {
     vig.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+
+    if (world.freeze > 0) {
+        ctx.fillStyle = `rgba(255, 45, 149, ${Math.min(0.5, world.freeze)})`;
+        ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+    }
 
     drawHud(ctx, world);
 }

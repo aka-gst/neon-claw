@@ -12,6 +12,8 @@ import { createCamera, updateCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createAudio } from './audio.js';
+import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
+import { loadTileset } from './assets.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -21,9 +23,28 @@ const renderer = createRenderer(canvas);
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-let world = createWorld();
+// Тайлсет подгружается фоном: до его прихода игра рисует встроенным
+// способом и работает точно так же. Ассет — это украшение, а не условие.
+loadTileset('roofs').then((tiles) => { renderer.tiles = tiles; });
+
+let modeId = DEFAULT_MODE;
+let world = createWorld(undefined, modeId);
 let camera = createCamera(world);
 let screen = 'title';
+
+/**
+ * Режим боя выбирается кнопкой или цифрой и меняется мгновенно, прямо
+ * посреди забега. Сравнивать ощущения имеет смысл только так: один
+ * уровень, одни руки, разные правила подряд.
+ */
+function setMode(next) {
+    if (!MODES[next]) return;
+    modeId = next;
+    for (const el of document.querySelectorAll('[data-mode]')) {
+        el.classList.toggle('is-on', el.dataset.mode === modeId);
+    }
+    restart();
+}
 
 function show(name) {
     screen = name;
@@ -31,14 +52,17 @@ function show(name) {
     if (name === 'won') {
         document.getElementById('won-score').textContent = String(world.score);
         document.getElementById('won-loot').textContent = `${world.collected} / ${world.totalLoot}`;
+        document.getElementById('won-mode').textContent = world.mode.name;
+        document.getElementById('won-tries').textContent = String(world.attempts);
     }
     if (name === 'lost') {
         document.getElementById('lost-score').textContent = String(world.score);
+        document.getElementById('lost-mode').textContent = world.mode.name;
     }
 }
 
 function restart() {
-    world = createWorld();
+    world = createWorld(undefined, modeId);
     camera = createCamera(world);
     show('none');
 }
@@ -87,6 +111,8 @@ window.addEventListener('keydown', (event) => {
     audio.unlock();
     if (event.code === 'KeyM') audio.toggle();
     if (event.code === 'F2') renderer.debug = !renderer.debug;
+    const slot = /^Digit([1-4])$/.exec(event.code);
+    if (slot) setMode(MODE_ORDER[Number(slot[1]) - 1]);
     if (screen === 'title' && (event.code === 'Space' || event.code === 'Enter')) {
         event.preventDefault();
         restart();
@@ -98,6 +124,14 @@ for (const button of document.querySelectorAll('[data-action="start"]')) {
     button.addEventListener('click', () => {
         audio.unlock();
         restart();
+        canvas.focus();
+    });
+}
+
+for (const button of document.querySelectorAll('[data-mode]')) {
+    button.addEventListener('click', () => {
+        audio.unlock();
+        setMode(button.dataset.mode);
         canvas.focus();
     });
 }
@@ -118,6 +152,7 @@ window.NEON = {
     renderer,
     input,
     restart,
+    setMode,
     advance(keys = {}, seconds = 1) {
         const base = {
             left: false, right: false, up: false, down: false,
@@ -141,10 +176,32 @@ window.NEON = {
         return {
             x: Math.round(p.body.x), y: Math.round(p.body.y),
             state: p.state, hp: p.hp, score: world.score, phase: world.phase,
+            mode: world.mode.id, attempts: world.attempts, takedowns: world.takedowns,
         };
     },
 };
 
+// Кнопки режимов строятся из самих правил: иначе список в разметке
+// и список в `combat.js` разъедутся на первой же правке баланса.
+const modesBox = document.getElementById('modes');
+MODE_ORDER.forEach((id, i) => {
+    const mode = MODES[id];
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mode';
+    button.dataset.mode = id;
+    button.innerHTML = `<b>${i + 1}. ${mode.name}</b><i>${mode.kin}</i><span>${mode.blurb}</span>`;
+    button.addEventListener('click', () => {
+        audio.unlock();
+        setMode(id);
+        canvas.focus();
+    });
+    modesBox.append(button);
+});
+
+for (const el of document.querySelectorAll('[data-mode]')) {
+    el.classList.toggle('is-on', el.dataset.mode === modeId);
+}
 show('title');
 requestAnimationFrame(frame);
 

@@ -149,6 +149,58 @@ h2 {
     color: rgba(255, 200, 87, 0.72);
 }
 
+.modes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin: 0 auto 20px;
+    max-width: 480px;
+}
+
+button.mode {
+    display: grid;
+    gap: 2px;
+    padding: 9px 11px;
+    text-align: left;
+    border: 1px solid rgba(34, 232, 255, 0.22);
+    background: rgba(10, 20, 40, 0.35);
+    letter-spacing: 0;
+}
+
+button.mode b {
+    font-size: 0.86rem;
+    letter-spacing: 0.08em;
+    color: var(--cyan);
+}
+
+button.mode i {
+    font-style: normal;
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(207, 230, 255, 0.4);
+}
+
+button.mode span {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--dim);
+}
+
+button.mode:hover,
+button.mode:focus-visible {
+    border-color: rgba(34, 232, 255, 0.5);
+    background: rgba(34, 232, 255, 0.09);
+    box-shadow: none;
+}
+
+button.mode.is-on {
+    border-color: var(--gold);
+    background: rgba(255, 200, 87, 0.1);
+}
+
+button.mode.is-on b { color: var(--gold); }
+
 button {
     appearance: none;
     padding: 12px 30px;

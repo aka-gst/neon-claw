@@ -11,16 +11,18 @@
  */
 
 import { ENFORCER } from './tuning.js';
+import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
 import { solidAtPoint } from './level.js';
 
-export function createEnforcer(spawn, index = 0) {
+export function createEnforcer(spawn, index = 0, rules = null) {
+    const hp = rules?.hp ?? ENFORCER.hp;
     return {
         id: `enforcer-${index}`,
         body: makeBody(spawn.x, spawn.y, ENFORCER.w, ENFORCER.h),
         facing: -1,
-        hp: ENFORCER.hp,
-        maxHp: ENFORCER.hp,
+        hp,
+        maxHp: hp,
         state: 'patrol',
         t: 0,
         /** Сколько ещё помнит игрока после потери из виду. */
@@ -47,15 +49,58 @@ export function enforcerAttackRect(e) {
     };
 }
 
+/** Поднять убитого обратно: комната — это задача, и решать её надо целиком. */
+export function reviveEnforcer(e, rules = null) {
+    const hp = rules?.hp ?? e.maxHp;
+    e.hp = hp;
+    e.maxHp = hp;
+    e.state = 'patrol';
+    e.t = 0;
+    e.alert = 0;
+    e.cooldown = 0;
+    e.guardReady = 0;
+    e.hitstop = 0;
+    e.flash = 0;
+    e.facing = -1;
+    e.body.x = e.home.x;
+    e.body.y = e.home.y;
+    e.body.vx = 0;
+    e.body.vy = 0;
+}
+
 /**
- * Приход удара. Возвращает, что игрок услышал: звон о гарду или попадание.
+ * Приход удара. Возвращает, что игрок услышал: снятие, звон или попадание.
+ *
+ * `opts` приходит из режима боя — см. `combat.js`. Здесь нет ни одного
+ * решения о балансе, только исполнение чужих правил.
  */
-export function hurtEnforcer(e, fromX) {
+export function hurtEnforcer(e, fromX, opts = {}) {
     if (e.state === 'dead') return 'none';
+    const { takedown = false, parry = false, guard = 'meter' } = opts;
+
+    // Снятие. Ни гарда, ни здоровье тут не участвуют — в этом весь смысл
+    // захода со спины: он отменяет бой, а не выигрывает его.
+    if (takedown) {
+        e.hp = 0;
+        e.state = 'dead';
+        e.t = 0;
+        e.flash = 0.22;
+        e.body.vy = -140;
+        e.body.vx = (Math.sign(e.body.x - fromX) || 1) * 70;
+        return 'takedown';
+    }
 
     if (e.state === 'guard') {
         e.t = Math.min(ENFORCER.guard, e.t + ENFORCER.guardExtend);
         e.anim.guard = 0.18;
+        return 'blocked';
+    }
+
+    // Собранный страж лобовую атаку просто не пускает. Открывается он
+    // только собственным замахом — и это единственное окно.
+    if (parry && !isOpen(e)) {
+        e.anim.guard = 0.2;
+        e.facing = Math.sign(fromX - e.body.x) || e.facing;
         return 'blocked';
     }
 
@@ -72,7 +117,7 @@ export function hurtEnforcer(e, fromX) {
         return 'dead';
     }
 
-    if (e.guardReady <= 0) {
+    if (guard === 'meter' && e.guardReady <= 0) {
         e.state = 'guard';
         e.t = ENFORCER.guard;
         e.anim.guard = 0.2;
@@ -83,11 +128,55 @@ export function hurtEnforcer(e, fromX) {
     return 'hit';
 }
 
-function sees(e, player) {
+/**
+ * Зрение. Первый кирпич стелса и обязательное условие для снятия со спины:
+ * пока страж разворачивался к игроку в тот же кадр, когда тот появлялся в
+ * радиусе, «зайти сзади» было физически невозможно.
+ *
+ * Спиной не видят вовсе. Заметив однажды, помнят и следят — развернулись.
+ */
+/** Есть ли камень между двумя точками. Шаг в треть тайла — стены толще. */
+function blocked(level, ax, ay, bx, by) {
+    const steps = Math.ceil(Math.hypot(bx - ax, by - ay) / 8);
+    for (let i = 1; i < steps; i += 1) {
+        const t = i / steps;
+        if (solidAtPoint(level, ax + (bx - ax) * t, ay + (by - ay) * t)) return true;
+    }
+    return false;
+}
+
+function sees(e, player, level) {
     if (player.state === 'dead') return false;
     const dx = player.body.x - e.body.x;
     const dy = player.body.y - e.body.y;
-    return Math.abs(dx) < ENFORCER.sight && Math.abs(dy) < 70;
+    if (Math.abs(dx) >= ENFORCER.sight) return false;
+    // Заметив однажды, страж следит и за спиной: он развернулся.
+    if (e.alert > 0) {
+        return Math.abs(dy) < 70 && !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
+            player.body.x, player.body.y - player.body.h * 0.5);
+    }
+    if (Math.sign(dx) !== e.facing) return false;
+    if (Math.abs(dy) >= ENFORCER.coneNear + Math.abs(dx) * ENFORCER.coneSpread) return false;
+    // Сквозь стену не видят. Из-за этого геометрия уровня начинает работать
+    // на стелс: угол здания — это укрытие, а не просто препятствие.
+    return !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
+        player.body.x, player.body.y - player.body.h * 0.5);
+}
+
+/**
+ * Границы конуса для отрисовки. Картинка обязана совпадать с правилом,
+ * поэтому конус укорачивается о ближайшую стену так же, как и взгляд.
+ */
+export function sightCone(e, level) {
+    const eye = { x: e.body.x, y: e.body.y - e.body.h * 0.78 };
+    let far = ENFORCER.sight;
+    if (level) {
+        for (let d = 8; d <= ENFORCER.sight; d += 8) {
+            if (solidAtPoint(level, eye.x + e.facing * d, eye.y)) { far = d - 8; break; }
+        }
+    }
+    const half = ENFORCER.coneNear + far * ENFORCER.coneSpread;
+    return { eye, far, near: ENFORCER.coneNear, half, facing: e.facing };
 }
 
 function walk(e, dir, speed, dt) {
@@ -131,7 +220,7 @@ export function updateEnforcer(e, level, player, dt) {
             if (b.onGround && edgeAhead(e, level)) e.facing = -e.facing;
             walk(e, e.facing, ENFORCER.patrolSpeed, dt);
             e.anim.walk += Math.abs(b.vx) * dt * 0.1;
-            if (sees(e, player)) {
+            if (sees(e, player, level)) {
                 e.state = 'chase';
                 e.alert = ENFORCER.memory;
                 event = 'spot';
@@ -141,7 +230,7 @@ export function updateEnforcer(e, level, player, dt) {
 
         case 'chase': {
             const dx = player.body.x - b.x;
-            if (sees(e, player)) e.alert = ENFORCER.memory;
+            if (sees(e, player, level)) e.alert = ENFORCER.memory;
             if (e.alert <= 0) { e.state = 'patrol'; break; }
 
             const near = Math.abs(dx) <= ENFORCER.attackRange - 4;

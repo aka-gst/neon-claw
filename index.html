@@ -31,25 +31,32 @@
                 Прыжок берёт два тайла, когти — три. К стене прижимаются
                 клавишей в её сторону: дальше вверх ведёт зигзаг.
             </p>
+
+            <p class="kicker">правила боя · цифры 1–4 меняют на ходу</p>
+            <div class="modes" id="modes"></div>
+
             <button type="button" data-action="start">НА КРЫШИ</button>
         </section>
 
         <section data-screen="paused">
             <h2>ПАУЗА</h2>
-            <p class="lead">Esc — обратно, R — сначала.</p>
+            <p class="lead">Esc — обратно, R — сначала, 1–4 — сменить правила боя.</p>
         </section>
 
         <section data-screen="won">
             <p class="kicker">эвакуация</p>
             <h2>ВЫШЕЛ</h2>
-            <p class="lead">Счёт <b id="won-score">0</b> · трофеи <b id="won-loot">0 / 0</b></p>
+            <p class="lead">
+                Счёт <b id="won-score">0</b> · трофеи <b id="won-loot">0 / 0</b><br>
+                Режим <b id="won-mode">—</b> · попыток <b id="won-tries">1</b>
+            </p>
             <button type="button" data-action="start">ЕЩЁ РАЗ</button>
         </section>
 
         <section data-screen="lost">
             <p class="kicker">причал забрал своё</p>
             <h2>КОНЕЦ</h2>
-            <p class="lead">Счёт <b id="lost-score">0</b></p>
+            <p class="lead">Счёт <b id="lost-score">0</b> · режим <b id="lost-mode">—</b></p>
             <button type="button" data-action="start">СНАЧАЛА</button>
         </section>
     </div>
