@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createWorld, stepWorld } from '../src/world.js';
 import { hurtEnforcer, updateEnforcer } from '../src/enemy.js';
 import { STEP, ENFORCER, TILE } from '../src/tuning.js';
-import { MODES } from '../src/combat.js';
+import { RULES } from '../src/combat.js';
 import { intent } from './helpers.mjs';
 
 const ARENA = [
@@ -16,8 +16,7 @@ const ARENA = [
     '##########',
 ];
 
-/** Дуэльный режим — тот, в котором гарда и есть весь бой. */
-const arena = () => createWorld(ARENA, 'duel');
+const arena = () => createWorld(ARENA);
 
 const tick = (world, seconds) => {
     for (let i = 0; i < Math.round(seconds / STEP); i += 1) {
@@ -29,7 +28,7 @@ test('первый удар проходит и поднимает гарду', 
     const world = arena();
     const foe = world.enemies[0];
     assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'hit');
-    assert.equal(foe.hp, MODES.duel.enemy.hp - 1);
+    assert.equal(foe.hp, RULES.enemy.hp - 1);
     assert.equal(foe.state, 'guard');
 });
 
@@ -43,23 +42,23 @@ test('удар в гарду не ранит и продлевает её — д
     assert.ok(left < ENFORCER.guard, 'гарда не тикает');
 
     assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'blocked');
-    assert.equal(foe.hp, MODES.duel.enemy.hp - 1, 'блок пропустил урон');
+    assert.equal(foe.hp, RULES.enemy.hp - 1, 'блок пропустил урон');
     assert.ok(foe.t > left, 'блок не продлился от удара');
 });
 
-test('после гарды открывается окно: выждавший успевает ударить дважды', () => {
+test('после гарды открывается окно: выждавший добивает сразу', () => {
     const world = arena();
     const foe = world.enemies[0];
     hurtEnforcer(foe, foe.body.x - 30);
+    assert.equal(foe.hp, RULES.enemy.hp - 1);
 
     // Плюс кадры замирания от самого попадания — они тоже идут в счёт.
     tick(world, ENFORCER.guard + 0.2);
     assert.notEqual(foe.state, 'guard', 'гарда не опустилась сама');
     assert.ok(foe.guardReady > 0, 'страж готов закрыться снова сразу же');
 
-    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'hit');
-    assert.equal(foe.state, 'chase', 'в открытом окне он всё равно закрылся');
-    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'dead');
+    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'dead',
+        'в открытом окне удар не прошёл');
     assert.equal(foe.hp, 0);
 });
 

@@ -16,7 +16,7 @@ import { intent } from './helpers.mjs';
 
 const rows = LEVELS.perimeter.rows;
 const level = () => parseLevel(rows);
-const world = (mode = 'mix') => createWorld(rows, mode);
+const world = () => createWorld(rows);
 
 const play = (w, keys, seconds, once = {}) => {
     for (let i = 0; i < Math.round(seconds / STEP); i += 1) {

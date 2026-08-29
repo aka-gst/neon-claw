@@ -25,6 +25,26 @@ export const STEP = 1 / 120;
  */
 export const VIEW = { w: 480, h: 270 };
 
+/**
+ * Сколько мира видно. Постоянна не форма кадра, а его ПЛОЩАДЬ: 480×270 на
+ * рабочем столе, столько же пикселей мира в любой другой пропорции.
+ *
+ * Форму диктует экран — на телефоне в портрете кадр высокий и узкий, в
+ * ландшафте широкий и низкий, — но количество увиденного остаётся тем же.
+ * Иначе одни игроки замечают стража на два тайла раньше других, и это уже
+ * не разные экраны, а разная игра.
+ */
+const VIEW_AREA = 480 * 270;
+
+export function fitView(cssWidth, cssHeight) {
+    if (!(cssWidth > 0) || !(cssHeight > 0)) return VIEW;
+    const aspect = cssWidth / cssHeight;
+    const clamp = (lo, v, hi) => Math.min(hi, Math.max(lo, v));
+    VIEW.w = clamp(280, Math.round(Math.sqrt(VIEW_AREA * aspect)), 620);
+    VIEW.h = clamp(190, Math.round(VIEW_AREA / VIEW.w), 560);
+    return VIEW;
+}
+
 export const PLAYER = {
     w: 15,
     h: 30,

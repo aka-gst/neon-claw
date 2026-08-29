@@ -32,11 +32,11 @@ const play = (world, keys, seconds) => {
 };
 
 test('крадущийся шаг беззвучен, а бег слышно', () => {
-    const sneaking = createWorld(CORNER, 'mix');
+    const sneaking = createWorld(CORNER);
     play(sneaking, { right: true, walk: true }, 1.2);
     assert.equal(moodOf(sneaking.enemies[0]), 'calm', 'страж услышал крадущегося');
 
-    const running = createWorld(CORNER, 'mix');
+    const running = createWorld(CORNER);
     play(running, { right: true }, 1.2);
     assert.notEqual(moodOf(running.enemies[0]), 'calm', 'бег остался неуслышанным');
 });
@@ -54,7 +54,7 @@ test('крадучись герой действительно медленне�
 });
 
 test('шум обходит угол: слышат из-за стены, но не видят', () => {
-    const world = createWorld(CORNER, 'mix');
+    const world = createWorld(CORNER);
     const foe = world.enemies[0];
     foe.facing = -1;
     play(world, { right: true }, 1.0);
@@ -69,7 +69,7 @@ test('проверив шум, страж возвращается на марш
     assert.equal(foe.state, 'suspect');
     assert.equal(hearNoise(foe, 400, 200, 120), false, 'повторный шум считается новым переполохом');
 
-    const world = createWorld(CORNER, 'mix');
+    const world = createWorld(CORNER);
     const guard = world.enemies[0];
     hearNoise(guard, guard.body.x + 20, guard.body.y, 200);
     play(world, { walk: true }, NOISE.investigate + 1);
@@ -84,7 +84,7 @@ test('звон о гарду слышно дальше любого шага', (
 });
 
 test('на бегу шум отмечается кругами, и они видны игроку', () => {
-    const world = createWorld(CORNER, 'mix');
+    const world = createWorld(CORNER);
     play(world, { right: true }, 0.6);
     assert.ok(world.noises.length > 0, 'шум не показан вовсе');
     assert.ok(world.noises.every((n) => n.r > 0 && n.life > 0));

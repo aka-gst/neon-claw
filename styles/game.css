@@ -326,11 +326,18 @@ body.has-touch {
     padding-top: env(safe-area-inset-top);
 }
 
+/*
+ * На телефоне кадр не заперт в 16:9: форму диктует экран, а количество
+ * увиденного мира держит постоянным код (см. fitView). Иначе игра ютится
+ * в полоске, а две трети экрана занимают кнопки.
+ */
 body.has-touch .frame {
     width: 100vw;
+    aspect-ratio: auto;
     border-left: none;
     border-right: none;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .tpad,
@@ -387,18 +394,20 @@ body.has-touch .frame {
      * нижнего края экрана, а колонка во всю оставшуюся высоту не становится
      * от этого удобнее — только промахнуться легче.
      */
+    /* Кнопкам — нижняя четверть, остальное игре. */
     #touch {
         position: static;
-        flex: 1 1 auto;
+        flex: 0 0 auto;
+        height: min(27vh, 230px);
         flex-direction: row;
-        align-items: flex-end;
+        align-items: stretch;
         gap: 8px;
-        padding: 0 8px calc(10px + env(safe-area-inset-bottom));
+        padding: 0 8px calc(8px + env(safe-area-inset-bottom));
     }
 
     .tpad,
     .tacts {
-        height: min(38vh, 300px);
+        height: 100%;
         border-radius: 8px;
     }
 
@@ -437,13 +446,15 @@ body.has-touch .frame {
  * происходит игра, и закрывать её пальцами нельзя.
  */
 @media (orientation: landscape) {
+    /* В ландшафте кадр занимает экран целиком: чёрных полей быть не должно. */
     body.has-touch .frame {
-        width: min(100vw, calc(100vh * 16 / 9));
-        margin: auto;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
     }
 
     @supports (height: 100dvh) {
-        body.has-touch .frame { width: min(100vw, calc(100dvh * 16 / 9)); }
+        body.has-touch .frame { height: 100dvh; }
     }
 
     /* Подписи на кнопках в ландшафте лежат поверх игры — им положено

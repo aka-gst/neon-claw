@@ -630,20 +630,31 @@ function drawTiles(ctx, world, cam, glowPass, tiles) {
                 ctx.lineWidth = lw(2.2);
                 ctx.stroke();
             }
+            /*
+             * Каждая грань, которая касается воздуха, обязана быть видна.
+             * Циан сверху значит «сюда можно встать», фиолет по бокам и
+             * снизу — «об это упрёшься». Без нижней грани подвешенная плита
+             * с проходом под ней выходила чёрной на чёрном: игрок утыкался
+             * в стену, которой не видел, и это читалось как поломка.
+             */
+            ctx.strokeStyle = 'rgba(140, 100, 255, 0.8)';
+            ctx.lineWidth = lw(1.6);
             if (tileAt(level, col - 1, row) !== SOLID) {
                 ctx.beginPath();
                 ctx.moveTo(x + 1, y);
                 ctx.lineTo(x + 1, y + TILE);
-                ctx.strokeStyle = 'rgba(124, 77, 255, 0.55)';
-                ctx.lineWidth = lw(1.4);
                 ctx.stroke();
             }
             if (tileAt(level, col + 1, row) !== SOLID) {
                 ctx.beginPath();
                 ctx.moveTo(x + TILE - 1, y);
                 ctx.lineTo(x + TILE - 1, y + TILE);
-                ctx.strokeStyle = 'rgba(124, 77, 255, 0.55)';
-                ctx.lineWidth = lw(1.4);
+                ctx.stroke();
+            }
+            if (tileAt(level, col, row + 1) !== SOLID) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + TILE - 1);
+                ctx.lineTo(x + TILE, y + TILE - 1);
                 ctx.stroke();
             }
 
@@ -797,16 +808,12 @@ function drawHud(ctx, world) {
     ctx.font = '600 12px "Rajdhani", system-ui, sans-serif';
     ctx.fillText(`ТРОФЕИ ${world.collected}/${world.totalLoot}`, VIEW.w - 22, 38);
 
-    // Режим и попытки — это приборы для сравнения, а не украшение:
-    // без них два прохода подряд не отличить друг от друга.
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255, 200, 87, 0.7)';
-    ctx.fillText(world.mode.name.toUpperCase(), 22, 38);
     ctx.fillStyle = 'rgba(125, 252, 255, 0.4)';
-    ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 52);
+    ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 38);
     if (world.takedowns > 0) {
         ctx.fillStyle = 'rgba(77, 255, 184, 0.7)';
-        ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 66);
+        ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 52);
     }
 
     if (world.notice) {

@@ -6,14 +6,13 @@
  * прыжок выходит выше, чем на 60, и настраивать его становится нечем.
  */
 
-import { STEP, VIEW } from './tuning.js';
+import { STEP, VIEW, fitView } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createTouch, hasTouch } from './touch.js';
 import { createAudio } from './audio.js';
-import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
 import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
@@ -22,10 +21,9 @@ const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
 const input = createInput(window);
 const audio = createAudio();
-const renderer = createRenderer(canvas);
-
 // Сенсорные кнопки появляются только там, где есть сенсор: на планшете с
 // клавиатурой и на узком окне рабочего стола они мешают, а не помогают.
+// Класс ставится до первого замера: от него зависит размер кадра.
 const touchRoot = document.getElementById('touch');
 const touch = hasTouch() ? createTouch(touchRoot) : null;
 if (touch) {
@@ -33,12 +31,48 @@ if (touch) {
     document.body.classList.add('has-touch');
 }
 
+const frameBox = document.querySelector('.frame');
+
+/**
+ * Подгонка мира под форму экрана. Пересобирает рендер целиком: и буфер
+ * свечения, и слои фона печатаются от размеров кадра, а он только что
+ * изменился. Загруженные ассеты переносятся — их незачем качать заново.
+ */
+function fitToFrame(previous = null) {
+    fitView(frameBox.clientWidth, frameBox.clientHeight);
+    const next = createRenderer(canvas);
+    if (previous) {
+        next.tiles = previous.tiles;
+        next.art = previous.art;
+        next.debug = previous.debug;
+    }
+    return next;
+}
+
+let renderer = fitToFrame();
+
+// Поворот телефона меняет форму кадра, а с ней и то, сколько видно мира.
+// Пересобираем — но не чаще одного раза на кадр отрисовки.
+let refitQueued = false;
+const queueRefit = () => {
+    if (refitQueued) return;
+    refitQueued = true;
+    requestAnimationFrame(() => {
+        refitQueued = false;
+        const before = `${VIEW.w}x${VIEW.h}`;
+        fitView(frameBox.clientWidth, frameBox.clientHeight);
+        if (`${VIEW.w}x${VIEW.h}` === before) return;
+        renderer = fitToFrame(renderer);
+    });
+};
+window.addEventListener('resize', queueRefit);
+window.addEventListener('orientationchange', queueRefit);
+
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 
-let modeId = DEFAULT_MODE;
 let levelId = DEFAULT_LEVEL;
-let world = createWorld(getLevel(levelId).rows, modeId);
+let world = createWorld(getLevel(levelId).rows);
 
 // Ассеты подгружаются фоном: до их прихода игра рисует встроенным способом
 // и работает точно так же. Украшение, а не условие — поэтому и грузится
@@ -48,20 +82,6 @@ loadTileset(district).then((tiles) => { renderer.tiles = tiles; });
 loadBackdrop(district).then((art) => { renderer.art = art; });
 let camera = createCamera(world);
 let screen = 'title';
-
-/**
- * Режим боя выбирается кнопкой или цифрой и меняется мгновенно, прямо
- * посреди забега. Сравнивать ощущения имеет смысл только так: один
- * уровень, одни руки, разные правила подряд.
- */
-function setMode(next) {
-    if (!MODES[next]) return;
-    modeId = next;
-    for (const el of document.querySelectorAll('[data-mode]')) {
-        el.classList.toggle('is-on', el.dataset.mode === modeId);
-    }
-    restart();
-}
 
 /** Уровень тоже переключается на ходу: правила надо сравнивать на обоих. */
 function setLevel(next) {
@@ -82,7 +102,7 @@ function show(name) {
     document.body.classList.toggle('menu-open', name !== 'none');
     if (name !== 'none') touch?.release();
     if (name === 'won') {
-        const best = recordRun(`${levelId}:${world.mode.id}`, {
+        const best = recordRun(levelId, {
             time: world.elapsed,
             attempts: world.attempts,
             takedowns: world.takedowns,
@@ -91,7 +111,6 @@ function show(name) {
         });
         document.getElementById('won-score').textContent = String(world.score);
         document.getElementById('won-loot').textContent = `${world.collected} / ${world.totalLoot}`;
-        document.getElementById('won-mode').textContent = world.mode.name;
         document.getElementById('won-tries').textContent = String(world.attempts);
         document.getElementById('won-time').textContent = formatTime(world.elapsed);
         document.getElementById('won-quiet').textContent = String(world.takedowns);
@@ -102,12 +121,11 @@ function show(name) {
     }
     if (name === 'lost') {
         document.getElementById('lost-score').textContent = String(world.score);
-        document.getElementById('lost-mode').textContent = world.mode.name;
     }
 }
 
 function restart() {
-    world = createWorld(getLevel(levelId).rows, modeId);
+    world = createWorld(getLevel(levelId).rows);
     camera = createCamera(world);
     show('none');
 }
@@ -156,8 +174,6 @@ window.addEventListener('keydown', (event) => {
     audio.unlock();
     if (event.code === 'KeyM') audio.toggle();
     if (event.code === 'F2') renderer.debug = !renderer.debug;
-    const slot = /^Digit([1-4])$/.exec(event.code);
-    if (slot) setMode(MODE_ORDER[Number(slot[1]) - 1]);
     if (event.code === 'KeyL') {
         setLevel(LEVEL_ORDER[(LEVEL_ORDER.indexOf(levelId) + 1) % LEVEL_ORDER.length]);
     }
@@ -172,14 +188,6 @@ for (const button of document.querySelectorAll('[data-action="start"]')) {
     button.addEventListener('click', () => {
         audio.unlock();
         restart();
-        canvas.focus();
-    });
-}
-
-for (const button of document.querySelectorAll('[data-mode]')) {
-    button.addEventListener('click', () => {
-        audio.unlock();
-        setMode(button.dataset.mode);
         canvas.focus();
     });
 }
@@ -220,7 +228,6 @@ window.NEON = {
     input,
     touch,
     restart,
-    setMode,
     setLevel,
     show,
     advance(keys = {}, seconds = 1) {
@@ -246,40 +253,10 @@ window.NEON = {
         return {
             x: Math.round(p.body.x), y: Math.round(p.body.y),
             state: p.state, hp: p.hp, score: world.score, phase: world.phase,
-            mode: world.mode.id, attempts: world.attempts, takedowns: world.takedowns,
+            attempts: world.attempts, takedowns: world.takedowns,
         };
     },
 };
-
-// Кнопки режимов строятся из самих правил: иначе список в разметке
-// и список в `combat.js` разъедутся на первой же правке баланса.
-const modesBox = document.getElementById('modes');
-MODE_ORDER.forEach((id, i) => {
-    const mode = MODES[id];
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'mode';
-    button.dataset.mode = id;
-    button.innerHTML = `<b>${i + 1}. ${mode.name}</b><i>${mode.kin}</i>`
-        + `<span>${mode.blurb}</span><em data-best="${id}"></em>`;
-    button.addEventListener('click', () => {
-        audio.unlock();
-        setMode(id);
-        canvas.focus();
-    });
-    modesBox.append(button);
-});
-
-/** Итоги прошлых прогонов прямо на карточках: выбирать удобнее рядом с цифрами. */
-function paintModeResults() {
-    for (const slot of document.querySelectorAll('[data-best]')) {
-        const best = resultFor(`${levelId}:${slot.dataset.best}`);
-        slot.textContent = best
-            ? `лучшее ${formatTime(best.time)} · попыток ${best.attempts}`
-                + (best.takedowns ? ` · тихо ${best.takedowns}` : '')
-            : '';
-    }
-}
 
 const levelsBox = document.getElementById('levels');
 LEVEL_ORDER.forEach((id) => {
@@ -288,7 +265,8 @@ LEVEL_ORDER.forEach((id) => {
     button.type = 'button';
     button.className = 'mode level';
     button.dataset.level = id;
-    button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`;
+    button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`
+        + `<em data-best="${id}"></em>`;
     button.addEventListener('click', () => {
         audio.unlock();
         setLevel(id);
@@ -301,9 +279,6 @@ for (const el of document.querySelectorAll('[data-level]')) {
 }
 
 paintModeResults();
-for (const el of document.querySelectorAll('[data-mode]')) {
-    el.classList.toggle('is-on', el.dataset.mode === modeId);
-}
 show('title');
 requestAnimationFrame(frame);
 

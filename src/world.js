@@ -14,19 +14,17 @@ import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
     hearNoise,
 } from './enemy.js';
-import { getMode, strikeKind, DEFAULT_MODE } from './combat.js';
+import { RULES, strikeKind } from './combat.js';
 
-export function createWorld(rows, modeId = DEFAULT_MODE) {
+export function createWorld(rows) {
     const level = parseLevel(rows);
-    const mode = getMode(modeId);
     const player = createPlayer(level.spawn);
-    player.hp = mode.player.hp;
-    player.maxHp = mode.player.hp;
+    player.hp = RULES.player.hp;
+    player.maxHp = RULES.player.hp;
     return {
         level,
-        mode,
         player,
-        enemies: level.enemies.map((e, i) => createEnforcer(e, i, mode.enemy)),
+        enemies: level.enemies.map((e, i) => createEnforcer(e, i, RULES.enemy)),
         loot: level.loot.map((l, i) => ({ ...l, id: i, taken: false, bob: i * 0.7, vx: 0, vy: 0 })),
         sparks: [],
         /** Круги шума — то, что игрок видит вместо слуха стражей. */
@@ -115,13 +113,11 @@ function playerAttacks(world) {
         if (!overlaps(blade, bodyRect(e.body))) continue;
 
         p.attack.hits.add(e.id);
-        const rules = world.mode;
         const kind = strikeKind(p, e);
-        const takedown = Boolean(rules.takedown[kind]);
         const result = hurtEnforcer(e, p.body.x, {
-            takedown,
-            parry: rules.enemy.parry,
-            guard: rules.enemy.guard,
+            takedown: Boolean(RULES.takedown[kind]),
+            parry: RULES.enemy.parry,
+            guard: RULES.enemy.guard,
         });
         const mid = { x: (blade.x + blade.w / 2 + e.body.x) / 2, y: e.body.y - e.body.h / 2 };
 
@@ -148,9 +144,7 @@ function playerAttacks(world) {
             pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, 3);
-            say(world, world.mode.enemy.parry
-                ? 'В лоб не берётся. Зайди со спины или вымани замах.'
-                : 'Гарда. Выжди — она не вечная.', 1.8);
+            say(world, 'Гарда. Выжди — она не вечная.', 1.8);
         } else {
             spark(world, mid.x, mid.y, 14, '#ff2d95', 260, 0.34);
             world.events.push(result === 'dead' ? 'kill' : 'hit');
@@ -244,7 +238,7 @@ function takeCheckpoint(world) {
 function restartFromCheckpoint(world) {
     const p = world.player;
     world.attempts += 1;
-    p.hp = world.mode.player.hp;
+    p.hp = RULES.player.hp;
     p.body.x = world.checkpoint.x;
     p.body.y = world.checkpoint.y;
     p.body.vx = 0;
@@ -256,7 +250,7 @@ function restartFromCheckpoint(world) {
     p.wall = 0;
     p.dashReady = true;
     p.attack.phase = 'none';
-    for (const e of world.enemies) reviveEnforcer(e, world.mode.enemy);
+    for (const e of world.enemies) reviveEnforcer(e, RULES.enemy);
     world.events.push('retry');
 }
 
@@ -353,14 +347,9 @@ export function stepWorld(world, intent, dt) {
     }
 
     if (p.hp <= 0) {
-        if (world.mode.player.retry === 'checkpoint') {
-            world.freeze = 0.4;
-            world.shake = Math.max(world.shake, 8);
-            world.events.push('lose');
-        } else {
-            world.phase = 'lost';
-            world.events.push('lose');
-        }
+        world.freeze = 0.4;
+        world.shake = Math.max(world.shake, 8);
+        world.events.push('lose');
     } else if (reachedExit(world)) {
         world.phase = 'won';
         world.score += 250 + p.hp * 50;
