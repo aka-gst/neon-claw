@@ -31,11 +31,15 @@ const DEAD_X = 8;
 const DEAD_Y = 18;
 /** До этого отклонения — крадущийся шаг, дальше — бег. */
 const WALK_X = 26;
+/** Опорный радиус стика для прицеливания. */
+const AIM_R = 64;
 
 export function createTouch(root) {
     const state = {
         left: false, right: false, up: false, down: false,
-        walk: false, jumpHeld: false,
+        walk: false, jumpHeld: false, bowHeld: false,
+        /** Наклон стика как вектор: им же целятся из лука. */
+        aimX: 0, aimY: 0,
     };
     const pressed = new Set();
     /** Палец, который сейчас держит стик. Остальные — кнопки. */
@@ -48,6 +52,8 @@ export function createTouch(root) {
         state.up = false;
         state.down = false;
         state.walk = false;
+        state.aimX = 0;
+        state.aimY = 0;
     };
 
     const pad = root.querySelector('[data-touch="pad"]');
@@ -67,6 +73,10 @@ export function createTouch(root) {
         state.walk = Math.abs(dx) > DEAD_X && Math.abs(dx) < WALK_X;
         state.down = dy > DEAD_Y;
         state.up = dy < -DEAD_Y;
+        // Вектор прицела нормируется по опорному радиусу: дальше него
+        // наклон уже ничего не добавляет, а палец устаёт.
+        state.aimX = Math.max(-1, Math.min(1, dx / AIM_R));
+        state.aimY = Math.max(-1, Math.min(1, dy / AIM_R));
     });
 
     for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
@@ -83,10 +93,12 @@ export function createTouch(root) {
             button.classList.add('is-down');
             pressed.add(action);
             if (action === 'jump') state.jumpHeld = true;
+            if (action === 'bow') state.bowHeld = true;
         });
         const release = () => {
             button.classList.remove('is-down');
             if (action === 'jump') state.jumpHeld = false;
+            if (action === 'bow') state.bowHeld = false;
         };
         for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
             button.addEventListener(type, release);
@@ -106,6 +118,7 @@ export function createTouch(root) {
             clearStick();
             pressed.clear();
             state.jumpHeld = false;
+            state.bowHeld = false;
             for (const b of root.querySelectorAll('[data-touch]')) b.classList.remove('is-down');
         },
     };

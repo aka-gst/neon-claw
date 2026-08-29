@@ -11,7 +11,7 @@
  * а точное попадание — здесь всё и должно быть светящимся контуром.
  */
 
-import { TILE, VIEW, SWORD, ENFORCER, LEDGE } from './tuning.js';
+import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW } from './tuning.js';
 import { SOLID, ONEWAY, tileAt, levelPixelHeight } from './level.js';
 import { attackRect } from './player.js';
 import { enforcerAttackRect, sightCone, moodOf } from './enemy.js';
@@ -346,6 +346,38 @@ function drawHero(ctx, p, glowPass, time) {
         }
         ctx.stroke();
         drawBlade(ctx, [-3, shoulder + 3], 2.5, 17, HERO.trim, lw(1.6), null);
+    } else if (p.bow.drawing) {
+        // Лук держат обеими руками и разворачивают по прицелу: поза должна
+        // говорить, куда полетит, ещё до того, как игрок увидит дугу.
+        const local = p.facing > 0 ? p.bow.angle : Math.PI - p.bow.angle;
+        const power = Math.min(1, p.bow.t / BOW.drawTime);
+        ctx.save();
+        ctx.translate(4, shoulder + 2);
+        ctx.rotate(local);
+        ctx.strokeStyle = '#4dffb8';
+        ctx.lineWidth = lw(2);
+        ctx.beginPath();
+        ctx.arc(6, 0, 9, -2.1, 2.1);
+        ctx.stroke();
+        ctx.strokeStyle = '#bff4ff';
+        ctx.lineWidth = lw(1.2);
+        ctx.beginPath();
+        ctx.moveTo(6 + 9 * Math.cos(-2.1), 9 * Math.sin(-2.1));
+        ctx.lineTo(-2 - power * 4, 0);
+        ctx.lineTo(6 + 9 * Math.cos(2.1), 9 * Math.sin(2.1));
+        ctx.stroke();
+        ctx.lineWidth = lw(1.8);
+        ctx.beginPath();
+        ctx.moveTo(-2 - power * 4, 0);
+        ctx.lineTo(12, 0);
+        ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = HERO.rim;
+        ctx.lineWidth = lw(2);
+        ctx.beginPath();
+        ctx.moveTo(sx + 2, shoulder + 1);
+        ctx.lineTo(4, shoulder + 2);
+        ctx.stroke();
     } else {
         const hand = sliding ? [8, hip - 2] : [sx + 4.5, shoulder + 3];
         ctx.beginPath();
@@ -744,6 +776,63 @@ function drawExit(ctx, world, glowPass, time) {
     ctx.globalAlpha = 1;
 }
 
+/**
+ * Стрелы и предпросмотр полёта.
+ *
+ * Дуга из точек считается той же физикой, что и настоящая стрела, — иначе
+ * она врала бы игроку о том, куда попадёт. Без неё лук с тяжестью и
+ * сопротивлением воздуха превращается в угадайку.
+ */
+function drawArrows(ctx, world, glowPass) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    const p = world.player;
+
+    if (p.bow.drawing) {
+        const power = Math.min(1, p.bow.t / BOW.drawTime);
+        const speed = BOW.speedMin + (BOW.speedMax - BOW.speedMin) * power;
+        let x = p.body.x + Math.cos(p.bow.angle) * 8;
+        let y = p.body.y - p.body.h * 0.62 + Math.sin(p.bow.angle) * 8;
+        let vx = Math.cos(p.bow.angle) * speed;
+        let vy = Math.sin(p.bow.angle) * speed;
+        const step = 0.055;
+
+        ctx.fillStyle = '#4dffb8';
+        for (let i = 0; i < BOW.preview; i += 1) {
+            vy += BOW.gravity * step;
+            const decay = 1 - Math.min(1, BOW.drag * step);
+            vx *= decay;
+            vy *= decay;
+            x += vx * step;
+            y += vy * step;
+            ctx.globalAlpha = (1 - i / BOW.preview) * 0.75 * (0.35 + power * 0.65);
+            ctx.beginPath();
+            ctx.arc(x, y, lw(0.9), 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    ctx.lineCap = 'round';
+    for (const a of world.arrows) {
+        const angle = Math.atan2(a.vy, a.vx);
+        ctx.strokeStyle = '#bff4ff';
+        ctx.lineWidth = lw(1.8);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(a.x - Math.cos(angle) * 11, a.y - Math.sin(angle) * 11);
+        ctx.stroke();
+    }
+    for (const s of world.stuck) {
+        ctx.strokeStyle = 'rgba(191, 244, 255, 0.55)';
+        ctx.lineWidth = lw(1.5);
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - Math.cos(s.angle) * 9, s.y - Math.sin(s.angle) * 9);
+        ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+}
+
 function drawSparks(ctx, world, glowPass) {
     const lw = (w) => (glowPass ? w * HALO : w);
     ctx.lineCap = 'round';
@@ -778,6 +867,7 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
         ctx.globalAlpha = 1;
     }
 
+    drawArrows(ctx, world, glowPass);
     drawNoises(ctx, world, glowPass);
     drawMoods(ctx, world, glowPass, world.time);
     drawSparks(ctx, world, glowPass);
@@ -801,6 +891,17 @@ function drawHud(ctx, world) {
         ctx.stroke();
     }
 
+    // Колчан рядом с жизнями: и то и другое кончается, и знать надо заранее.
+    for (let i = 0; i < world.player.bow.arrows; i += 1) {
+        const x = 22 + i * 7;
+        ctx.strokeStyle = '#4dffb8';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(x, 46);
+        ctx.lineTo(x, 56);
+        ctx.stroke();
+    }
+
     ctx.fillStyle = '#7dfcff';
     ctx.textAlign = 'right';
     ctx.fillText(String(world.score).padStart(5, '0'), VIEW.w - 22, 18);
@@ -813,7 +914,7 @@ function drawHud(ctx, world) {
     ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 38);
     if (world.takedowns > 0) {
         ctx.fillStyle = 'rgba(77, 255, 184, 0.7)';
-        ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 52);
+        ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 66);
     }
 
     if (world.notice) {

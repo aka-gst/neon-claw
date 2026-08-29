@@ -95,6 +95,16 @@ const VOICES = {
         [523, 784].forEach((f, i) => tone({ from: f, dur: 0.14, type: 'triangle', gain: 0.13, delay: i * 0.08 }));
     },
     retry: () => tone({ from: 180, to: 420, dur: 0.16, type: 'square', gain: 0.14 }),
+    // Натяжение слышно как нарастающее напряжение, выстрел — как срыв.
+    'bow.draw': () => tone({ from: 160, to: 300, dur: 0.5, type: 'triangle', gain: 0.07 }),
+    'bow.release': () => {
+        hiss({ dur: 0.08, gain: 0.12, freq: 2800, q: 1.4 });
+        tone({ from: 520, to: 200, dur: 0.1, type: 'triangle', gain: 0.1 });
+    },
+    'arrow.hit': () => {
+        tone({ from: 900, to: 500, dur: 0.07, type: 'square', gain: 0.12 });
+        hiss({ dur: 0.06, gain: 0.09, freq: 3600, q: 2 });
+    },
 
     hit: () => {
         tone({ from: 180, to: 60, dur: 0.14, type: 'square', gain: 0.26 });

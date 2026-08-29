@@ -17,6 +17,7 @@ const BINDINGS = {
     dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
     // Ctrl под «красться» — идиома Thief и Splinter Cell, руки её знают.
     walk: ['ControlLeft', 'ControlRight'],
+    bow: ['KeyF', 'KeyE'],
     pause: ['Escape', 'KeyP'],
     restart: ['KeyR'],
 };
@@ -101,6 +102,11 @@ export function readIntent(input, touch = null) {
         attackDown: attack || padAttack,
         dashDown: dash || padDash,
         walk: input.held('walk') || Boolean(t?.walk),
+        bowHeld: input.held('bow') || Boolean(t?.bowHeld),
+        // Куда целиться. С клавиатуры — стрелками, с сенсора — наклоном
+        // стика: у лука нет своего направления, он берёт его у движения.
+        aimX: t?.aimX ?? ((input.held('right') ? 1 : 0) - (input.held('left') ? 1 : 0)),
+        aimY: t?.aimY ?? ((input.held('down') ? 1 : 0) - (input.held('up') ? 1 : 0)),
     };
 }
 

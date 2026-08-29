@@ -18,7 +18,7 @@
  * рывок — четыре тайла провала, подкат — щель в один тайл.
  */
 
-import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, NOISE, STEP } from './tuning.js';
+import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, NOISE, BOW, STEP } from './tuning.js';
 import { makeBody, moveX, moveY, findLedge, wallSide, headroom } from './physics.js';
 
 export function createPlayer(spawn) {
@@ -47,6 +47,8 @@ export function createPlayer(spawn) {
         slideTimer: 0,
 
         attack: { phase: 'none', t: 0, hits: new Set() },
+        /** Лук: натяжение, угол и колчан. `release` мир забирает и обнуляет. */
+        bow: { drawing: false, t: 0, angle: 0, arrows: BOW.arrows, release: null },
         ledge: null,
         climb: 0,
 
@@ -94,6 +96,60 @@ function stepAttack(p, dt) {
     if (a.phase === 'recover' && a.t >= recover) { a.phase = 'none'; a.t = 0; }
 }
 
+/* ---------------------------------------------------------------------- лук */
+
+/**
+ * Куда целиться. У лука нет своего направления — он берёт его у движения:
+ * стрелки на клавиатуре, наклон стика на телефоне. Без ввода стреляет
+ * почти горизонтально вперёд: это самый частый выстрел, и он не должен
+ * требовать отдельного действия.
+ */
+function aimAngle(p, intent) {
+    let ax = intent.aimX ?? 0;
+    let ay = intent.aimY ?? 0;
+    if (Math.abs(ax) < 0.2 && Math.abs(ay) < 0.2) return p.facing > 0 ? -0.12 : Math.PI + 0.12;
+    if (Math.abs(ax) < 0.2) ax = p.facing * 0.3;
+    return Math.atan2(ay, ax);
+}
+
+function stepBow(p, intent, dt) {
+    const bow = p.bow;
+
+    if (!intent.bowHeld) {
+        if (!bow.drawing) return;
+        bow.drawing = false;
+        // Случайное касание не должно стоить стрелы: слишком короткое
+        // натяжение отменяет выстрел, а не тратит его впустую.
+        if (bow.t < 0.12 || bow.arrows <= 0) {
+            bow.t = 0;
+            return;
+        }
+        bow.release = { angle: bow.angle, power: Math.min(1, bow.t / BOW.drawTime) };
+        bow.arrows -= 1;
+        bow.t = 0;
+        p.sfx.push('bow.release');
+        return;
+    }
+
+    if (bow.arrows <= 0 || p.attack.phase !== 'none') return;
+    if (!bow.drawing) {
+        bow.drawing = true;
+        bow.t = 0;
+        p.sfx.push('bow.draw');
+    }
+    bow.t = Math.min(BOW.drawTime, bow.t + dt);
+    bow.angle = aimAngle(p, intent);
+    // Целишься назад — разворачиваешься. Стрелять из-за спины нельзя.
+    const facing = Math.cos(bow.angle) >= 0 ? 1 : -1;
+    if (Math.abs(intent.aimX ?? 0) > 0.2) p.facing = facing;
+}
+
+/** Натяжение отменяется всем, что уносит героя с места. */
+function cancelBow(p) {
+    p.bow.drawing = false;
+    p.bow.t = 0;
+}
+
 /* ------------------------------------------------------------------ движение */
 
 function horizontal(p, intent, dt) {
@@ -101,7 +157,9 @@ function horizontal(p, intent, dt) {
     const dir = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
     const swinging = p.attack.phase !== 'none' && b.onGround;
     const base = intent.walk && b.onGround ? PLAYER.walkSpeed : PLAYER.runSpeed;
-    const top = base * (swinging ? 0.35 : 1);
+    // Натяжение почти укореняет: лук не для бега, и это его главная цена.
+    const drawn = p.bow.drawing ? BOW.drawSpeed : 1;
+    const top = base * (swinging ? 0.35 : 1) * drawn;
 
     // Отдача и толчок от стены — это не бег, а бросок: пока они длятся,
     // ни разгон, ни трение к ним не применяются.
@@ -246,6 +304,7 @@ function tryDash(p, intent, level) {
     if (p.state === 'wall') p.facing = -p.wall;
     p.state = 'dash';
     p.wall = 0;
+    cancelBow(p);
     p.dashTimer = DASH.time;
     p.dashReady = false;
     p.dashCooldown = DASH.cooldown;
@@ -309,6 +368,7 @@ function tryLedge(p, level, intent) {
 
     p.ledge = grab;
     p.state = 'hang';
+    cancelBow(p);
     p.wall = 0;
     b.x = grab.hangX;
     b.y = grab.hangY;
@@ -365,6 +425,7 @@ export function hurtPlayer(p, fromX, damage = 1) {
     p.controlLock = 0.18;
     p.anim.hurtFlash = 0.4;
     p.attack.phase = 'none';
+    cancelBow(p);
     p.body.h = PLAYER.h;
     p.state = p.hp <= 0 ? 'dead' : 'move';
     p.ledge = null;
@@ -432,8 +493,12 @@ export function updatePlayer(p, level, intent, dt) {
         if (p.state === 'wall') return;
     }
 
-    if (intent.attackDown && p.state === 'move' && p.controlLock <= 0) startAttack(p);
+    if (intent.attackDown && p.state === 'move' && p.controlLock <= 0) {
+        cancelBow(p);
+        startAttack(p);
+    }
     stepAttack(p, dt);
+    if (p.state === 'move' && p.controlLock <= 0) stepBow(p, intent, dt);
 
     const wasAir = !p.body.onGround;
     horizontal(p, intent, dt);

@@ -366,13 +366,14 @@ body.has-touch .frame {
     flex: 1 1 45%;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: 'dash jump' 'attack jump';
+    grid-template-areas: 'dash jump' 'attack jump' 'bow jump';
     gap: 6px;
     padding: 6px;
 }
 
 .tbtn[data-touch='dash'] { grid-area: dash; }
 .tbtn[data-touch='attack'] { grid-area: attack; }
+.tbtn[data-touch='bow'] { grid-area: bow; border-color: rgba(77, 255, 184, 0.42); }
 .tbtn.tbig { grid-area: jump; border-color: rgba(255, 45, 149, 0.42); }
 
 .tbtn.is-down,
@@ -417,8 +418,8 @@ body.has-touch .frame {
     .tacts {
         flex: 1 1 48%;
         grid-template-columns: 1fr 1fr;
-        grid-template-rows: 1fr 1.15fr;
-        grid-template-areas: 'dash attack' 'jump jump';
+        grid-template-rows: 1fr 1fr 1.1fr;
+        grid-template-areas: 'dash attack' 'bow bow' 'jump jump';
         padding: 0;
     }
 

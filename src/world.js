@@ -6,13 +6,13 @@
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE } from './tuning.js';
-import { parseLevel, levelPixelHeight } from './level.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE, BOW } from './tuning.js';
+import { parseLevel, levelPixelHeight, solidAtPoint } from './level.js';
 import { overlaps, bodyRect } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
 import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
-    hearNoise,
+    hearNoise, moodOf,
 } from './enemy.js';
 import { RULES, strikeKind } from './combat.js';
 
@@ -30,6 +30,9 @@ export function createWorld(rows) {
         /** Круги шума — то, что игрок видит вместо слуха стражей. */
         noises: [],
         noiseTimer: 0,
+        /** Стрелы в полёте и воткнувшиеся — вторые подбираются обратно. */
+        arrows: [],
+        stuck: [],
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
         events: [],
         score: 0,
@@ -201,6 +204,97 @@ function pickLoot(world, dt) {
     }
 }
 
+/* --------------------------------------------------------------------- лук */
+
+function fireArrow(world) {
+    const p = world.player;
+    const shot = p.bow.release;
+    if (!shot) return;
+    p.bow.release = null;
+
+    const speed = BOW.speedMin + (BOW.speedMax - BOW.speedMin) * shot.power;
+    world.arrows.push({
+        x: p.body.x + Math.cos(shot.angle) * 8,
+        y: p.body.y - p.body.h * 0.62 + Math.sin(shot.angle) * 8,
+        vx: Math.cos(shot.angle) * speed,
+        vy: Math.sin(shot.angle) * speed,
+        t: 0,
+    });
+}
+
+/**
+ * Полёт стрелы. Шаг разбивается, потому что на полной скорости за кадр
+ * она проходит пять пикселей и легко проскочила бы сквозь тонкую плиту.
+ *
+ * Воткнувшись в камень, стрела шумит — и в этом половина её смысла:
+ * промах уводит патруль туда, а не сюда.
+ */
+function stepArrows(world, dt) {
+    const p = world.player;
+    const alive = [];
+
+    for (const a of world.arrows) {
+        a.t += dt;
+        a.vy += BOW.gravity * dt;
+        const decay = 1 - Math.min(1, BOW.drag * dt);
+        a.vx *= decay;
+        a.vy *= decay;
+
+        const steps = Math.max(1, Math.ceil(Math.hypot(a.vx, a.vy) * dt / 6));
+        let done = false;
+        for (let i = 0; i < steps && !done; i += 1) {
+            a.x += (a.vx * dt) / steps;
+            a.y += (a.vy * dt) / steps;
+
+            if (solidAtPoint(world.level, a.x, a.y)) {
+                world.stuck.push({ x: a.x, y: a.y, angle: Math.atan2(a.vy, a.vx) });
+                emitNoise(world, a.x, a.y, BOW.noise, 'arrow');
+                world.events.push('arrow.hit');
+                done = true;
+                break;
+            }
+
+            for (const e of world.enemies) {
+                if (e.state === 'dead') continue;
+                if (!overlaps({ x: a.x - 2, y: a.y - 2, w: 4, h: 4 }, bodyRect(e.body))) continue;
+
+                // Стрела убивает того, кто её не ждёт. Увидевший страж
+                // успевает уйти с линии — ему достаётся обычный урон.
+                const unaware = moodOf(e) !== 'alert';
+                const result = hurtEnforcer(e, a.x, { takedown: unaware, guard: 'none' });
+                spark(world, a.x, a.y, 10, unaware ? '#4dffb8' : '#ff2d95', 200, 0.35);
+                emitNoise(world, a.x, a.y, unaware ? NOISE.takedown : NOISE.death, unaware ? 'quiet' : 'death');
+                world.events.push(unaware ? 'takedown' : 'hit');
+                if (unaware) {
+                    world.takedowns += 1;
+                    world.score += 150;
+                    say(world, 'Стрела. Он не успел обернуться.', 1.4);
+                } else if (result === 'dead') {
+                    world.score += 100;
+                }
+                // Стрела остаётся там, где попала: её можно забрать.
+                world.stuck.push({ x: a.x, y: e.body.y - e.body.h / 2, angle: Math.atan2(a.vy, a.vx) });
+                done = true;
+                break;
+            }
+        }
+
+        if (!done && a.t < BOW.life && a.y < levelPixelHeight(world.level)) alive.push(a);
+    }
+    world.arrows = alive;
+
+    // Подбор: колчан не бездонный, и вернуть стрелу — часть маршрута.
+    if (p.bow.arrows < BOW.arrows) {
+        world.stuck = world.stuck.filter((s) => {
+            const near = Math.hypot(p.body.x - s.x, p.body.y - p.body.h / 2 - s.y) < BOW.pickup;
+            if (!near || p.bow.arrows >= BOW.arrows) return true;
+            p.bow.arrows += 1;
+            world.events.push('pickup');
+            return false;
+        });
+    }
+}
+
 function respawnIfFallen(world) {
     const p = world.player;
     if (p.body.y < levelPixelHeight(world.level) + TILE * 2) return;
@@ -250,6 +344,13 @@ function restartFromCheckpoint(world) {
     p.wall = 0;
     p.dashReady = true;
     p.attack.phase = 'none';
+    // Стрелы возвращаются вместе с комнатой: иначе откат тихо отбирает
+    // ресурс, и десятая попытка становится безнадёжнее первой.
+    p.bow.arrows = BOW.arrows;
+    p.bow.drawing = false;
+    p.bow.release = null;
+    world.arrows.length = 0;
+    world.stuck.length = 0;
     for (const e of world.enemies) reviveEnforcer(e, RULES.enemy);
     world.events.push('retry');
 }
@@ -335,6 +436,8 @@ export function stepWorld(world, intent, dt) {
         world.scrape = 0;
     }
 
+    fireArrow(world);
+    stepArrows(world, dt);
     playerAttacks(world);
     enemiesAttack(world);
     pickLoot(world, dt);
