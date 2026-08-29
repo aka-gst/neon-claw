@@ -106,23 +106,3 @@ test('лестница к мостику хранилища набирается
     assert.equal(crate - ledge, 2, 'уступ не в двух тайлах от ящика');
     assert.equal(ledge - walk, 2, 'мостик не в двух тайлах от уступа');
 });
-
-test('снятие сверху не грохочет приземлением', () => {
-    const w = world();
-    const foe = w.enemies.find((e) => Math.abs(e.body.x - 74 * TILE) < TILE * 2);
-    assert.ok(foe, 'нет стража в хранилище');
-
-    const p = w.player;
-    p.body.x = foe.body.x;
-    p.body.y = foe.body.y - TILE * 2;
-    p.body.onGround = false;
-    p.body.vy = 200;
-    p.facing = foe.facing;
-    play(w, { attackDown: false }, 0.02);
-    stepWorld(w, intent({ attackDown: true }), STEP);
-    play(w, {}, 0.3);
-
-    assert.equal(w.takedowns, 1, 'снятие сверху не сработало');
-    assert.ok(w.noises.every((n) => n.r <= 60),
-        'приземление после снятия слышно на весь сектор');
-});

@@ -18,7 +18,7 @@
  * рывок — четыре тайла провала, подкат — щель в один тайл.
  */
 
-import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, NOISE, BOW, STEP } from './tuning.js';
+import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, BOW, STEP } from './tuning.js';
 import { makeBody, moveX, moveY, findLedge, wallSide, headroom } from './physics.js';
 
 export function createPlayer(spawn) {
@@ -53,10 +53,6 @@ export function createPlayer(spawn) {
         climb: 0,
 
         anim: { run: 0, land: 0, swing: 0, hurtFlash: 0, dash: 0 },
-        /** Освещённость: 0 — тьма, 1 — под фонарём. Считает мир. */
-        lit: 1,
-        /** После снятия сверху приземление беззвучно: иначе оно не тихое. */
-        silentLand: 0,
         sfx: [],
         spawn: { ...spawn },
     };
@@ -163,10 +159,9 @@ function horizontal(p, intent, dt) {
     const b = p.body;
     const dir = (intent.right ? 1 : 0) - (intent.left ? 1 : 0);
     const swinging = p.attack.phase !== 'none' && b.onGround;
-    const base = intent.walk && b.onGround ? PLAYER.walkSpeed : PLAYER.runSpeed;
     // Натяжение почти укореняет: лук не для бега, и это его главная цена.
     const drawn = p.bow.drawing ? BOW.drawSpeed : 1;
-    const top = base * (swinging ? 0.35 : 1) * drawn;
+    const top = PLAYER.runSpeed * (swinging ? 0.35 : 1) * drawn;
 
     // Отдача и толчок от стены — это не бег, а бросок: пока они длятся,
     // ни разгон, ни трение к ним не применяются.
@@ -466,7 +461,6 @@ export function updatePlayer(p, level, intent, dt) {
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.anim.hurtFlash = Math.max(0, p.anim.hurtFlash - dt);
     p.anim.land = Math.max(0, p.anim.land - dt);
-    p.silentLand = Math.max(0, p.silentLand - dt);
     p.body.dropTimer = Math.max(0, p.body.dropTimer - dt);
 
     if (p.state === 'dead') {

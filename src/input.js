@@ -15,8 +15,6 @@ const BINDINGS = {
     jump: ['Space', 'ArrowUp', 'KeyW'],
     attack: ['KeyJ', 'KeyX'],
     dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
-    // Ctrl под «красться» — идиома Thief и Splinter Cell, руки её знают.
-    walk: ['ControlLeft', 'ControlRight'],
     bow: ['KeyF', 'KeyE'],
     pause: ['Escape', 'KeyP'],
     restart: ['KeyR'],
@@ -102,7 +100,6 @@ export function readIntent(input, touch = null, pointer = null) {
         jumpDown: jump || padJump,
         attackDown: attack || padAttack,
         dashDown: dash || padDash,
-        walk: input.held('walk') || Boolean(t?.walk),
         bowHeld: input.held('bow') || Boolean(t?.bowHeld) || Boolean(pointer?.active),
         // Куда целиться. С клавиатуры — стрелками, с сенсора — наклоном
         // стика: у лука нет своего направления, он берёт его у движения.

@@ -6,15 +6,14 @@
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, NOISE, BOW, LIGHT } from './tuning.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, BOW } from './tuning.js';
 import { parseLevel, levelPixelHeight, solidAtPoint } from './level.js';
 import { overlaps, bodyRect } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
 import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
-    hearNoise, moodOf,
 } from './enemy.js';
-import { RULES, strikeKind } from './combat.js';
+import { RULES } from './combat.js';
 
 export function createWorld(rows) {
     const level = parseLevel(rows);
@@ -27,14 +26,9 @@ export function createWorld(rows) {
         enemies: level.enemies.map((e, i) => createEnforcer(e, i, RULES.enemy)),
         loot: level.loot.map((l, i) => ({ ...l, id: i, taken: false, bob: i * 0.7, vx: 0, vy: 0 })),
         sparks: [],
-        /** Круги шума — то, что игрок видит вместо слуха стражей. */
-        noises: [],
-        noiseTimer: 0,
         /** Стрелы в полёте и воткнувшиеся — вторые подбираются обратно. */
         arrows: [],
         stuck: [],
-        /** Фонари: погасшие оживают сами. */
-        lights: level.lights.map((l) => ({ ...l, r: LIGHT.radius, on: true, out: 0 })),
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
         events: [],
         score: 0,
@@ -50,7 +44,6 @@ export function createWorld(rows) {
         checkpoint: { ...level.spawn },
         reached: new Set(),
         attempts: 1,
-        takedowns: 0,
         /** Чистое время забега: идёт только пока играют. */
         elapsed: 0,
         /** Пауза после смерти: без неё откат не читается как событие. */
@@ -74,36 +67,6 @@ function spark(world, x, y, count, color, spread = 120, life = 0.35) {
     }
 }
 
-/**
- * Шум. Стены его не держат: зрение перекрывается геометрией, слух нет.
- * Круг рисуется всегда — игрок обязан видеть, что именно он сейчас издал,
- * иначе наказание за бег читается как случайность.
- */
-function emitNoise(world, x, y, radius, kind = 'move') {
-    if (radius <= 0) return;
-    world.noises.push({ x, y, r: radius, t: 0, life: 0.5, kind });
-    let woke = false;
-    for (const e of world.enemies) {
-        if (hearNoise(e, x, y, radius)) woke = true;
-    }
-    if (woke) world.events.push('heard');
-}
-
-/** Длящийся шум: бег, подкат, скрежет когтей. Крадущийся шаг — ноль. */
-function continuousNoise(p) {
-    if (p.state === 'dash') return NOISE.dash;
-    if (p.state === 'slide') return NOISE.slide;
-    if (p.state === 'wall') return NOISE.scrape;
-    if (p.body.onGround && Math.abs(p.body.vx) > PLAYER.walkSpeed + 12) return NOISE.run;
-    return 0;
-}
-
-const POINT_NOISE = {
-    land: NOISE.land,
-    walljump: NOISE.scrape * 1.5,
-    jump: NOISE.run * 0.5,
-};
-
 function say(world, text, seconds = 2.4) {
     world.notice = { text, t: seconds };
 }
@@ -118,34 +81,17 @@ function playerAttacks(world) {
         if (!overlaps(blade, bodyRect(e.body))) continue;
 
         p.attack.hits.add(e.id);
-        const kind = strikeKind(p, e);
         const result = hurtEnforcer(e, p.body.x, {
-            takedown: Boolean(RULES.takedown[kind]),
             parry: RULES.enemy.parry,
             guard: RULES.enemy.guard,
         });
         const mid = { x: (blade.x + blade.w / 2 + e.body.x) / 2, y: e.body.y - e.body.h / 2 };
 
-        if (result === 'takedown') {
-            // Снятие тихое и мгновенное: это не победа в бою, а его отмена.
-            spark(world, e.body.x, e.body.y - e.body.h / 2, 16, '#4dffb8', 200, 0.45);
-            world.events.push('takedown');
-            world.score += 150;
-            world.takedowns += 1;
-            emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.takedown, 'quiet');
-            // Снятие сверху кончается приземлением. Если оно грохочет, тихого
-            // снятия не существует — значит, гасим его вместе с ударом.
-            p.silentLand = 0.45;
-            p.hitstop = SWORD.hitstop * 1.4;
-            world.shake = Math.max(world.shake, 5);
-            say(world, kind === 'above' ? 'Сверху. Он даже не обернулся.' : 'Со спины. Чисто.', 1.4);
-        } else if (result === 'blocked') {
+        if (result === 'blocked') {
             // Звон — это отказ, и он должен ощущаться отказом: отдача,
             // потерянный темп и ни единицы урона.
             spark(world, mid.x, mid.y, 12, '#9ad8ff', 200, 0.3);
             world.events.push('clang');
-            // Звон слышно дальше всего: это провал, и он должен стоить дорого.
-            emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.clang, 'clang');
             pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, 3);
@@ -158,7 +104,6 @@ function playerAttacks(world) {
             if (!p.body.onGround) p.body.vy = Math.min(p.body.vy, -SWORD.airLift);
             if (result === 'dead') {
                 world.score += 100;
-                emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.death, 'death');
                 spark(world, e.body.x, e.body.y - e.body.h / 2, 22, '#ffc857', 300, 0.6);
             }
         }
@@ -206,68 +151,6 @@ function pickLoot(world, dt) {
     }
 }
 
-/* -------------------------------------------------------------------- свет */
-
-/**
- * Насколько герой освещён: 0 — тьма, 1 — прямо под фонарём.
- *
- * Берётся максимум по источникам, а не сумма: два далёких фонаря не
- * должны складываться в яркое пятно там, где глазом видно полумрак.
- * И свет держат стены — в отличие от шума. Именно этим укрытие от
- * взгляда отличается от укрытия от слуха.
- */
-function illumination(world, x, y) {
-    let best = 0;
-    for (const lamp of world.lights) {
-        if (!lamp.on) continue;
-        const dist = Math.hypot(x - lamp.x, y - lamp.y);
-        if (dist >= lamp.r) continue;
-        const k = 1 - dist / lamp.r;
-        if (k <= best) continue;
-        if (blockedLine(world.level, lamp.x, lamp.y, x, y)) continue;
-        best = k;
-    }
-    return best;
-}
-
-/** Есть ли камень между двумя точками. Шаг в треть тайла — стены толще. */
-function blockedLine(level, ax, ay, bx, by) {
-    const steps = Math.ceil(Math.hypot(bx - ax, by - ay) / 8);
-    for (let i = 1; i < steps; i += 1) {
-        const t = i / steps;
-        if (solidAtPoint(level, ax + (bx - ax) * t, ay + (by - ay) * t)) return true;
-    }
-    return false;
-}
-
-function stepLights(world, dt) {
-    for (const lamp of world.lights) {
-        if (lamp.on) continue;
-        lamp.out -= dt;
-        if (lamp.out <= 0) {
-            lamp.on = true;
-            world.events.push('relight');
-        }
-    }
-    const p = world.player;
-    p.lit = illumination(world, p.body.x, p.body.y - p.body.h * 0.55);
-}
-
-/** Стрела гасит фонарь. Тьму можно не искать, а делать. */
-function douse(world, x, y) {
-    for (const lamp of world.lights) {
-        if (!lamp.on) continue;
-        if (Math.hypot(x - lamp.x, y - lamp.y) > TILE) continue;
-        lamp.on = false;
-        lamp.out = LIGHT.relight;
-        spark(world, lamp.x, lamp.y, 12, '#ffc857', 160, 0.4);
-        world.events.push('douse');
-        say(world, 'Фонарь погас. Ненадолго.', 1.6);
-        return true;
-    }
-    return false;
-}
-
 /* --------------------------------------------------------------------- лук */
 
 function fireArrow(world) {
@@ -313,16 +196,8 @@ function stepArrows(world, dt) {
             a.x += (a.vx * dt) / steps;
             a.y += (a.vy * dt) / steps;
 
-            if (douse(world, a.x, a.y)) {
-                world.stuck.push({ x: a.x, y: a.y, angle: Math.atan2(a.vy, a.vx) });
-                emitNoise(world, a.x, a.y, BOW.noise * 0.5, 'arrow');
-                done = true;
-                break;
-            }
-
             if (solidAtPoint(world.level, a.x, a.y)) {
                 world.stuck.push({ x: a.x, y: a.y, angle: Math.atan2(a.vy, a.vx) });
-                emitNoise(world, a.x, a.y, BOW.noise, 'arrow');
                 world.events.push('arrow.hit');
                 done = true;
                 break;
@@ -332,20 +207,11 @@ function stepArrows(world, dt) {
                 if (e.state === 'dead') continue;
                 if (!overlaps({ x: a.x - 2, y: a.y - 2, w: 4, h: 4 }, bodyRect(e.body))) continue;
 
-                // Стрела убивает того, кто её не ждёт. Увидевший страж
-                // успевает уйти с линии — ему достаётся обычный урон.
-                const unaware = moodOf(e) !== 'alert';
-                const result = hurtEnforcer(e, a.x, { takedown: unaware, guard: 'none' });
-                spark(world, a.x, a.y, 10, unaware ? '#4dffb8' : '#ff2d95', 200, 0.35);
-                emitNoise(world, a.x, a.y, unaware ? NOISE.takedown : NOISE.death, unaware ? 'quiet' : 'death');
-                world.events.push(unaware ? 'takedown' : 'hit');
-                if (unaware) {
-                    world.takedowns += 1;
-                    world.score += 150;
-                    say(world, 'Стрела. Он не успел обернуться.', 1.4);
-                } else if (result === 'dead') {
-                    world.score += 100;
-                }
+                // Стрела проходит сквозь гарду — в этом её смысл против меча.
+                const result = hurtEnforcer(e, a.x, { guard: 'none', pierce: true });
+                spark(world, a.x, a.y, 10, '#ff2d95', 200, 0.35);
+                world.events.push('hit');
+                if (result === 'dead') world.score += 100;
                 // Стрела остаётся там, где попала: её можно забрать.
                 world.stuck.push({ x: a.x, y: e.body.y - e.body.h / 2, angle: Math.atan2(a.vy, a.vx) });
                 done = true;
@@ -425,10 +291,6 @@ function restartFromCheckpoint(world) {
     p.bow.release = null;
     world.arrows.length = 0;
     world.stuck.length = 0;
-    for (const lamp of world.lights) {
-        lamp.on = true;
-        lamp.out = 0;
-    }
     for (const e of world.enemies) reviveEnforcer(e, RULES.enemy);
     world.events.push('retry');
 }
@@ -461,8 +323,6 @@ export function stepWorld(world, intent, dt) {
 
     for (const item of world.loot) item.bob += dt;
 
-    for (const n of world.noises) n.t += dt;
-    world.noises = world.noises.filter((n) => n.t < n.life);
 
     if (world.phase !== 'play') return;
 
@@ -477,38 +337,20 @@ export function stepWorld(world, intent, dt) {
     world.elapsed += dt;
 
     const p = world.player;
-    stepLights(world, dt);
     updatePlayer(p, world.level, intent, dt);
     if (p.sfx.length) {
-        for (const cue of p.sfx) {
-            if (cue === 'land' && p.silentLand > 0) continue;
-            const radius = POINT_NOISE[cue];
-            if (radius) emitNoise(world, p.body.x, p.body.y, radius, cue);
-        }
         world.events.push(...p.sfx);
         p.sfx.length = 0;
     }
-
-    const running = continuousNoise(p);
-    if (running > 0) {
-        world.noiseTimer -= dt;
-        if (world.noiseTimer <= 0) {
-            emitNoise(world, p.body.x, p.body.y - p.body.h / 2, running, 'move');
-            world.noiseTimer = NOISE.interval;
-        }
-    } else {
-        world.noiseTimer = 0;
-    }
     for (const e of world.enemies) updateEnforcer(e, world.level, p, dt);
 
-    // Когти по бетону: искры и скрежет. Стена должна ощущаться стеной,
-    // а не невидимым режимом падения.
+    // Когти по бетону: искры. Стена должна ощущаться стеной, а не
+    // невидимым режимом падения.
     if (p.state === 'wall') {
         world.scrape -= dt;
         if (world.scrape <= 0) {
             world.scrape = 0.07;
-            const side = p.wall;
-            spark(world, p.body.x + side * p.body.w / 2, p.body.y - p.body.h * 0.6, 3, '#7dfcff', 90, 0.22);
+            spark(world, p.body.x + p.wall * p.body.w / 2, p.body.y - p.body.h * 0.6, 3, '#7dfcff', 90, 0.22);
             world.events.push('scrape');
         }
     } else {

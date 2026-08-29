@@ -23,7 +23,7 @@ const pad = (state = {}, presses = []) => {
     return {
         state: {
             left: false, right: false, up: false, down: false,
-            walk: false, jumpHeld: false, ...state,
+            jumpHeld: false, ...state,
         },
         take: (a) => (left.delete(a) ? true : false),
     };
@@ -34,7 +34,6 @@ test('без сенсора намерение читается ровно ка�
     assert.equal(intent.right, true);
     assert.equal(intent.jumpHeld, true);
     assert.equal(intent.attackDown, true);
-    assert.equal(intent.walk, false);
 });
 
 test('сенсор двигает героя так же, как клавиатура', () => {
@@ -42,14 +41,6 @@ test('сенсор двигает героя так же, как клавиат�
     assert.equal(intent.right, true);
     assert.equal(intent.jumpHeld, true);
     assert.equal(intent.jumpDown, true);
-});
-
-test('глубина отклонения стика — это и есть крадущийся шаг', () => {
-    const creeping = readIntent(keyboard(), pad({ right: true, walk: true }));
-    assert.equal(creeping.walk, true, 'слабое отклонение не даёт тихий шаг');
-
-    const running = readIntent(keyboard(), pad({ right: true, walk: false }));
-    assert.equal(running.walk, false);
 });
 
 test('нажатие забирается один раз, чем бы его ни сделали', () => {

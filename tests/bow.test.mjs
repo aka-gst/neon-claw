@@ -2,19 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createWorld, stepWorld } from '../src/world.js';
-import { moodOf } from '../src/enemy.js';
-import { STEP, TILE, BOW, PLAYER, ENFORCER } from '../src/tuning.js';
-
-const ENFORCER_SIGHT = ENFORCER.sight;
+import { STEP, TILE, BOW, PLAYER } from '../src/tuning.js';
 import { intent } from './helpers.mjs';
 
 /**
- * Лук обязан обслуживать стелс, а не отменять его. Тесты стерегут три
- * ограничения, каждое из которых отнимает ровно то, чем он опасен:
- * стрел мало, натяжение укореняет, и убивает он только того, кто не ждёт.
+ * Лук — второе оружие, а не замена мечу. Меч быстрый, но упирается в
+ * гарду; лук медленный, зато гарду не замечает. Из этого и складывается
+ * выбор, и тесты стерегут обе половины.
  *
- * И отдельно — то, ради чего он вообще интереснее катаны: промах шумит
- * там, куда воткнулся, и уводит патруль в сторону.
+ * Плюс три ограничения, каждое отнимает ровно то, чем лук опасен: стрел
+ * четыре, натяжение почти укореняет, стрела тяжёлая и падает.
  */
 
 const RANGE = [
@@ -26,10 +23,6 @@ const RANGE = [
     '##########################',
 ];
 
-/**
- * Высокая площадка: стреле нужен воздух. Страж стоит дальше, чем видит
- * (170 пикселей), и спиной — значит, узнать о герое он может только на слух.
- */
 const OPEN = [
     '..........................',
     '..........................',
@@ -54,7 +47,6 @@ const play = (w, keys, seconds) => {
     }
 };
 
-/** Натянуть и отпустить: `bowHeld` держится, потом снимается. */
 const shoot = (w, hold = BOW.drawTime, aim = { aimX: 1, aimY: 0 }) => {
     play(w, { bowHeld: true, ...aim }, hold);
     play(w, { ...aim }, STEP * 2);
@@ -89,19 +81,6 @@ test('колчан кончается, и стрелять становится 
     assert.equal(w.player.bow.arrows, 0, 'выстрел без стрел прошёл');
 });
 
-test('стрела втыкается в камень и шумит там, куда попала', () => {
-    const w = createWorld(RANGE);
-    w.enemies.length = 0;
-    shoot(w, BOW.drawTime, { aimX: 1, aimY: 1 });
-    play(w, {}, 1.2);
-
-    assert.equal(w.arrows.length, 0, 'стрела всё ещё летит');
-    assert.equal(w.stuck.length, 1, 'стрела не воткнулась');
-
-    const spot = w.stuck[0];
-    assert.ok(spot.x > w.player.body.x, 'стрела воткнулась позади героя');
-});
-
 test('дальность лука — около шестнадцати тайлов навесом', () => {
     const w = createWorld(OPEN);
     w.enemies.length = 0;
@@ -114,53 +93,27 @@ test('дальность лука — около шестнадцати тайл
     assert.ok(reach < 22, `лук добивает на ${reach.toFixed(1)} тайла — это уже снайперка`);
 });
 
-test('промах уводит стража к месту попадания, а не к герою', () => {
-    const w = createWorld(OPEN);
-    const foe = w.enemies[0];
-    foe.facing = 1;
-    assert.equal(moodOf(foe), 'calm');
-    assert.ok(foe.body.x - w.player.body.x > ENFORCER_SIGHT,
-        'страж стоит в пределах видимости — тест проверял бы не то');
+test('стрела проходит сквозь гарду, а меч — нет', () => {
+    const bySword = createWorld(RANGE);
+    const guarded = bySword.enemies[0];
+    guarded.body.x = bySword.player.body.x + TILE * 1.2;
+    bySword.player.facing = 1;
+    // Первый удар поднимает гарду, второй должен от неё отскочить.
+    play(bySword, { attackDown: true }, 0.35);
+    const afterFirst = guarded.hp;
+    play(bySword, { attackDown: true }, 0.35);
+    assert.equal(guarded.state, 'guard', 'страж не закрылся');
+    assert.equal(guarded.hp, afterFirst, 'меч прошёл сквозь гарду');
 
-    shoot(w, BOW.drawTime, { aimX: 1, aimY: -0.7 });
-    play(w, {}, 1.5);
-    assert.equal(w.stuck.length, 1, 'стрела не воткнулась');
-
-    assert.equal(foe.state, 'suspect', `страж не пошёл на звук (${foe.state})`);
-    assert.ok(Math.abs(foe.suspect.x - w.stuck[0].x) < 1, 'страж пошёл не к стреле');
-    assert.ok(foe.suspect.x - w.player.body.x > TILE * 10,
-        'страж пошёл к герою, а не к стреле');
-});
-
-test('стрела снимает того, кто не ждёт', () => {
-    const w = createWorld(RANGE);
-    const foe = w.enemies[0];
-    // Ставим спиной и вплотную: он занят своим и герой ему не виден.
-    foe.body.x = w.player.body.x + TILE * 3;
-    foe.facing = 1;
-
-    shoot(w);
-    play(w, {}, 0.5);
-    assert.equal(foe.state, 'dead', `стрела в спину не сняла стража (${foe.state})`);
-    assert.equal(w.takedowns, 1);
-});
-
-test('увидевший стрелу страж успевает уйти с линии — ему лишь урон', () => {
-    const w = createWorld(RANGE);
-    const foe = w.enemies[0];
-    foe.body.x = w.player.body.x + TILE * 3;
-    foe.facing = 1;
-
-    // Тревога поднимается ровно между выстрелом и попаданием.
-    play(w, { bowHeld: true, aimX: 1 }, BOW.drawTime);
-    play(w, { aimX: 1 }, STEP * 2);
-    foe.alert = 2;
-    foe.state = 'chase';
-    const hp = foe.hp;
-
-    play(w, {}, 0.5);
-    assert.equal(w.takedowns, 0, 'готовый страж снят как неготовый');
-    assert.ok(foe.hp < hp, 'готовому стражу не досталось вовсе');
+    const byArrow = createWorld(RANGE);
+    const closed = byArrow.enemies[0];
+    closed.body.x = byArrow.player.body.x + TILE * 4;
+    closed.state = 'guard';
+    closed.t = 5;
+    const hp = closed.hp;
+    shoot(byArrow);
+    play(byArrow, {}, 0.6);
+    assert.ok(closed.hp < hp, 'стрела не пробила гарду — тогда лук незачем');
 });
 
 test('воткнувшуюся стрелу можно забрать обратно', () => {

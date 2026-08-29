@@ -82,15 +82,6 @@ const VOICES = {
     },
     slide: () => hiss({ dur: 0.34, gain: 0.13, freq: 1100, q: 0.9 }),
     scrape: () => hiss({ dur: 0.06, gain: 0.05, freq: 3400, q: 2.2 }),
-    // «Тебя услышали» — короткий вопрос, а не тревога: ещё можно уйти.
-    heard: () => {
-        tone({ from: 700, to: 900, dur: 0.09, type: 'triangle', gain: 0.15 });
-        tone({ from: 900, to: 760, dur: 0.1, type: 'triangle', gain: 0.11, delay: 0.09 });
-    },
-    takedown: () => {
-        hiss({ dur: 0.09, gain: 0.14, freq: 5200, q: 2.4 });
-        tone({ from: 240, to: 90, dur: 0.16, type: 'sine', gain: 0.2 });
-    },
     checkpoint: () => {
         [523, 784].forEach((f, i) => tone({ from: f, dur: 0.14, type: 'triangle', gain: 0.13, delay: i * 0.08 }));
     },
@@ -101,11 +92,6 @@ const VOICES = {
         hiss({ dur: 0.08, gain: 0.12, freq: 2800, q: 1.4 });
         tone({ from: 520, to: 200, dur: 0.1, type: 'triangle', gain: 0.1 });
     },
-    douse: () => {
-        hiss({ dur: 0.18, gain: 0.14, freq: 700, q: 0.7 });
-        tone({ from: 380, to: 90, dur: 0.2, type: 'sine', gain: 0.12 });
-    },
-    relight: () => tone({ from: 300, to: 620, dur: 0.14, type: 'triangle', gain: 0.09 }),
     'arrow.hit': () => {
         tone({ from: 900, to: 500, dur: 0.07, type: 'square', gain: 0.12 });
         hiss({ dur: 0.06, gain: 0.09, freq: 3600, q: 2 });

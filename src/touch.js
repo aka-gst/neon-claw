@@ -1,11 +1,8 @@
 /**
  * Сенсорное управление. Не «кнопки поверх игры», а отдельная раскладка.
  *
- * Действий шесть: влево, вправо, вниз, прыжок, катана, рывок — и ещё
- * крадущийся шаг. Семь кнопок на телефоне не помещаются и не запоминаются,
- * поэтому шаг не получает кнопки вовсе: им управляет глубина отклонения
- * стика. Ведёшь чуть-чуть — крадёшься беззвучно; ведёшь до упора — бежишь.
- * Ровно то же решение, что в любом геймпаде, и оно снимает целую кнопку.
+ * Действий много, а места мало, поэтому у стика двойная работа: он и
+ * ведёт героя, и целится из лука — глубина наклона задаёт силу натяжения.
  *
  * Стик безосевой: он появляется там, где палец коснулся экрана, а не в
  * заранее нарисованном кружке. На телефоне не видно, куда ты кладёшь палец,
@@ -29,15 +26,13 @@ function capture(el, event) {
 /** Мёртвая зона: случайное дрожание пальца не должно быть вводом. */
 const DEAD_X = 8;
 const DEAD_Y = 18;
-/** До этого отклонения — крадущийся шаг, дальше — бег. */
-const WALK_X = 26;
 /** Опорный радиус стика для прицеливания. */
 const AIM_R = 64;
 
 export function createTouch(root) {
     const state = {
         left: false, right: false, up: false, down: false,
-        walk: false, jumpHeld: false, bowHeld: false,
+        jumpHeld: false, bowHeld: false,
         /** Наклон стика как вектор: им же целятся из лука. */
         aimX: 0, aimY: 0,
     };
@@ -51,7 +46,6 @@ export function createTouch(root) {
         state.right = false;
         state.up = false;
         state.down = false;
-        state.walk = false;
         state.aimX = 0;
         state.aimY = 0;
     };
@@ -70,7 +64,6 @@ export function createTouch(root) {
         const dy = event.clientY - stick.y;
         state.left = dx < -DEAD_X;
         state.right = dx > DEAD_X;
-        state.walk = Math.abs(dx) > DEAD_X && Math.abs(dx) < WALK_X;
         state.down = dy > DEAD_Y;
         state.up = dy < -DEAD_Y;
         // Вектор прицела нормируется по опорному радиусу: дальше него

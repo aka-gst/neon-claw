@@ -10,7 +10,7 @@
  * из двух таймеров, без единой строчки про «сложность».
  */
 
-import { ENFORCER, NOISE, LIGHT } from './tuning.js';
+import { ENFORCER } from './tuning.js';
 import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
 import { solidAtPoint } from './level.js';
@@ -28,9 +28,6 @@ export function createEnforcer(spawn, index = 0, rules = null) {
         /** Сколько ещё помнит игрока после потери из виду. */
         alert: 0,
         cooldown: 0,
-        /** Куда идти проверять шум. null — ничего не слышал. */
-        suspect: null,
-        scan: 0,
         guardReady: 0,
         hitstop: 0,
         flash: 0,
@@ -41,40 +38,6 @@ export function createEnforcer(spawn, index = 0, rules = null) {
 
 export const isSwinging = (e) => e.state === 'active';
 export const isGuarding = (e) => e.state === 'guard';
-
-/** Настроение стража одним словом — для значка над головой и цвета конуса. */
-export function moodOf(e) {
-    if (e.state === 'dead') return 'dead';
-    if (e.alert > 0 || e.state === 'chase' || OPEN.has(e.state) || e.state === 'guard') return 'alert';
-    if (e.state === 'suspect') return 'suspect';
-    return 'calm';
-}
-
-const OPEN = new Set(['windup', 'active', 'recover']);
-
-/**
- * Услышанный шум. Стены его не держат — в этом весь смысл: зрение
- * перекрывается геометрией, слух нет. Возвращает true только на свежем
- * переполохе, чтобы мир не звенел значком на каждом шаге игрока.
- */
-export function hearNoise(e, x, y, radius) {
-    if (e.state === 'dead' || radius <= 0) return false;
-    const d = Math.hypot(x - e.body.x, y - (e.body.y - e.body.h / 2));
-    if (d > radius) return false;
-
-    // Тот, кто уже дерётся или гонится, шумом не удивишь — только продлишь память.
-    if (e.state === 'chase' || e.state === 'guard' || OPEN.has(e.state)) {
-        e.alert = ENFORCER.memory;
-        return false;
-    }
-
-    const fresh = e.state !== 'suspect';
-    e.state = 'suspect';
-    e.suspect = { x, y };
-    e.t = NOISE.investigate;
-    e.scan = 0.55;
-    return fresh;
-}
 
 export function enforcerAttackRect(e) {
     const b = e.body;
@@ -99,8 +62,6 @@ export function reviveEnforcer(e, rules = null) {
     e.hitstop = 0;
     e.flash = 0;
     e.facing = -1;
-    e.suspect = null;
-    e.scan = 0;
     e.body.x = e.home.x;
     e.body.y = e.home.y;
     e.body.vx = 0;
@@ -110,26 +71,17 @@ export function reviveEnforcer(e, rules = null) {
 /**
  * Приход удара. Возвращает, что игрок услышал: снятие, звон или попадание.
  *
- * `opts` приходит из режима боя — см. `combat.js`. Здесь нет ни одного
+ * `opts` приходит из правил боя — см. `combat.js`. Здесь нет ни одного
  * решения о балансе, только исполнение чужих правил.
  */
 export function hurtEnforcer(e, fromX, opts = {}) {
     if (e.state === 'dead') return 'none';
-    const { takedown = false, parry = false, guard = 'meter' } = opts;
+    const { parry = false, guard = 'meter', pierce = false } = opts;
 
-    // Снятие. Ни гарда, ни здоровье тут не участвуют — в этом весь смысл
-    // захода со спины: он отменяет бой, а не выигрывает его.
-    if (takedown) {
-        e.hp = 0;
-        e.state = 'dead';
-        e.t = 0;
-        e.flash = 0.22;
-        e.body.vy = -140;
-        e.body.vx = (Math.sign(e.body.x - fromX) || 1) * 70;
-        return 'takedown';
-    }
-
-    if (e.state === 'guard') {
+    // Гарда держит клинок, но не стрелу: пробивающий удар её игнорирует.
+    // Без этого закрывшийся страж становился неуязвим для лука, и лук
+    // переставал быть ответом на глухую оборону.
+    if (e.state === 'guard' && !pierce) {
         e.t = Math.min(ENFORCER.guard, e.t + ENFORCER.guardExtend);
         e.anim.guard = 0.18;
         return 'blocked';
@@ -184,41 +136,18 @@ function blocked(level, ax, ay, bx, by) {
     return false;
 }
 
+/**
+ * Страж замечает героя в пределах дальности и примерно на своей высоте —
+ * но не сквозь стену. Прятаться за угол осталось, красться — нет: это
+ * платформер с фехтованием, а не стелс.
+ */
 function sees(e, player, level) {
     if (player.state === 'dead') return false;
     const dx = player.body.x - e.body.x;
     const dy = player.body.y - e.body.y;
-    // Тьма — ресурс: в ней стража подпускают вчетверо ближе.
-    const lit = player.lit ?? 1;
-    const reach = ENFORCER.sight * (LIGHT.darkSight + (1 - LIGHT.darkSight) * lit);
-    if (Math.abs(dx) >= reach) return false;
-    // Заметив однажды, страж следит и за спиной: он развернулся.
-    if (e.alert > 0) {
-        return Math.abs(dy) < 70 && !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
-            player.body.x, player.body.y - player.body.h * 0.5);
-    }
-    if (Math.sign(dx) !== e.facing) return false;
-    if (Math.abs(dy) >= ENFORCER.coneNear + Math.abs(dx) * ENFORCER.coneSpread) return false;
-    // Сквозь стену не видят. Из-за этого геометрия уровня начинает работать
-    // на стелс: угол здания — это укрытие, а не просто препятствие.
+    if (Math.abs(dx) >= ENFORCER.sight || Math.abs(dy) >= 70) return false;
     return !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
         player.body.x, player.body.y - player.body.h * 0.5);
-}
-
-/**
- * Границы конуса для отрисовки. Картинка обязана совпадать с правилом,
- * поэтому конус укорачивается о ближайшую стену так же, как и взгляд.
- */
-export function sightCone(e, level, lit = 1) {
-    const eye = { x: e.body.x, y: e.body.y - e.body.h * 0.78 };
-    let far = ENFORCER.sight * (LIGHT.darkSight + (1 - LIGHT.darkSight) * lit);
-    if (level) {
-        for (let d = 8; d <= far; d += 8) {
-            if (solidAtPoint(level, eye.x + e.facing * d, eye.y)) { far = d - 8; break; }
-        }
-    }
-    const half = ENFORCER.coneNear + far * ENFORCER.coneSpread;
-    return { eye, far, near: ENFORCER.coneNear, half, facing: e.facing };
 }
 
 function walk(e, dir, speed, dt) {
@@ -266,36 +195,6 @@ export function updateEnforcer(e, level, player, dt) {
                 e.state = 'chase';
                 e.alert = ENFORCER.memory;
                 event = 'spot';
-            }
-            break;
-        }
-
-        case 'suspect': {
-            // Идёт на звук, а дойдя — осматривается. Ровно столько ума,
-            // сколько нужно, чтобы шум был решением игрока, а не фоном.
-            if (sees(e, player, level)) {
-                e.state = 'chase';
-                e.alert = ENFORCER.memory;
-                event = 'spot';
-                break;
-            }
-            e.t -= dt;
-            const dx = (e.suspect?.x ?? b.x) - b.x;
-            if (Math.abs(dx) > 12 && e.t > 0.9) {
-                if (b.onGround && edgeAhead(e, level) && Math.sign(dx) === e.facing) brake(e, dt);
-                else walk(e, Math.sign(dx) || e.facing, ENFORCER.patrolSpeed * 1.35, dt);
-            } else {
-                brake(e, dt);
-                e.scan -= dt;
-                if (e.scan <= 0) {
-                    e.facing = -e.facing;
-                    e.scan = 0.7;
-                }
-            }
-            e.anim.walk += Math.abs(b.vx) * dt * 0.1;
-            if (e.t <= 0) {
-                e.state = 'patrol';
-                e.suspect = null;
             }
             break;
         }

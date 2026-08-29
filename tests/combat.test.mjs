@@ -46,7 +46,7 @@ test('удар в гарду не ранит и продлевает её — д
     assert.ok(foe.t > left, 'блок не продлился от удара');
 });
 
-test('после гарды открывается окно: выждавший добивает сразу', () => {
+test('после гарды открывается окно: выждавший бьёт дважды', () => {
     const world = arena();
     const foe = world.enemies[0];
     hurtEnforcer(foe, foe.body.x - 30);
@@ -57,9 +57,10 @@ test('после гарды открывается окно: выждавший 
     assert.notEqual(foe.state, 'guard', 'гарда не опустилась сама');
     assert.ok(foe.guardReady > 0, 'страж готов закрыться снова сразу же');
 
-    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'dead',
+    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'hit',
         'в открытом окне удар не прошёл');
-    assert.equal(foe.hp, 0);
+    assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'dead',
+        'третий удар подряд не добил');
 });
 
 test('страж не уходит патрулировать в пропасть', () => {
