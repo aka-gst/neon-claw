@@ -77,6 +77,10 @@ function setLevel(next) {
 function show(name) {
     screen = name;
     overlay.dataset.show = name;
+    // Кнопки управления и меню не должны существовать одновременно:
+    // на телефоне они лежат в одних и тех же местах экрана.
+    document.body.classList.toggle('menu-open', name !== 'none');
+    if (name !== 'none') touch?.release();
     if (name === 'won') {
         const best = recordRun(`${levelId}:${world.mode.id}`, {
             time: world.elapsed,
@@ -187,6 +191,21 @@ window.addEventListener('blur', () => {
 
 // Первое касание разблокирует звук: браузер не даст его иначе.
 window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
+
+// Safari на iOS увеличивает щипком, что бы ни стояло в мета-теге. Гасим
+// жест руками: в игре нет ничего, что имело бы смысл разглядывать ближе.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+}
+
+// Двойной тап по игре тоже увеличивает — но только если браузер успел
+// решить, что это тап. Второе касание подряд отменяем.
+let lastTap = 0;
+document.addEventListener('touchend', (event) => {
+    const now = event.timeStamp;
+    if (now - lastTap < 320) event.preventDefault();
+    lastTap = now;
+}, { passive: false });
 
 /**
  * Отладочный доступ. Игра идёт на requestAnimationFrame, а он замирает в

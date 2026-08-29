@@ -19,6 +19,22 @@
 html, body {
     height: 100%;
     margin: 0;
+    /*
+     * Safari на iOS игнорирует user-scalable, поэтому масштаб выключается
+     * здесь: `manipulation` убирает зум по двойному тапу, а на самой игре
+     * ниже стоит `none` — там не должно работать вообще ничего, кроме
+     * наших собственных обработчиков.
+     */
+    touch-action: manipulation;
+}
+
+/*
+ * Высота считается по видимой части экрана, а не по 100vh: в 100vh на
+ * телефоне входит панель браузера, и кадр 16:9 оказывается выше окна —
+ * страница начинает прокручиваться, а игра уезжает под панель.
+ */
+@supports (height: 100dvh) {
+    html, body { height: 100dvh; }
 }
 
 body {
@@ -48,6 +64,12 @@ body {
         0 0 60px rgba(34, 232, 255, 0.10),
         0 30px 90px rgba(0, 0, 0, 0.7);
     overflow: hidden;
+}
+
+/* Ставится после .frame намеренно: правило с той же силой должно
+   перебивать, а не быть перебитым. */
+@supports (height: 100dvh) {
+    .frame { width: min(100vw, calc(100dvh * 16 / 9)); }
 }
 
 #screen {
@@ -286,6 +308,12 @@ button:focus-visible {
 body.has-touch #touch { display: flex; }
 body.has-touch #screen { touch-action: none; }
 
+/* Пока открыто меню, кнопок быть не должно: они перекрывают карточки. */
+body.menu-open #touch { display: none; }
+
+/* Меню единственное, что листается пальцем. Игра — нет. */
+#overlay { touch-action: pan-y; }
+
 /*
  * В портрете кадр 16:9 занимает верх экрана, а всё, что ниже, — пустота.
  * Туда и уходят кнопки: они не закрывают игру, а живут в месте, которое
@@ -390,6 +418,15 @@ body.has-touch .frame {
         width: min(100vw, calc(100vh * 16 / 9));
         margin: auto;
     }
+
+    @supports (height: 100dvh) {
+        body.has-touch .frame { width: min(100vw, calc(100dvh * 16 / 9)); }
+    }
+
+    /* Подписи на кнопках в ландшафте лежат поверх игры — им положено
+       быть подсказкой, а не элементом кадра. */
+    .tpad, .tacts { opacity: 0.5; }
+    .tpad, .tbtn { font-size: 0.58rem; }
 
     #touch {
         position: fixed;
