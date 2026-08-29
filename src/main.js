@@ -14,7 +14,7 @@ import { createInput, readIntent } from './input.js';
 import { createTouch, hasTouch } from './touch.js';
 import { createAudio } from './audio.js';
 import { loadTileset, loadBackdrop } from './assets.js';
-import { LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, getLevel } from './levels.js';
+import { LEVELS, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
 
 const canvas = document.getElementById('screen');
@@ -83,26 +83,14 @@ loadBackdrop(district).then((art) => { renderer.art = art; });
 let camera = createCamera(world);
 let screen = 'title';
 
-/** Итоги прошлых прогонов прямо на карточке уровня. */
+/** Итог прошлого прохождения — строкой на титульном экране. */
 function paintResults() {
-    for (const slot of document.querySelectorAll('[data-best]')) {
-        const best = resultFor(slot.dataset.best);
-        slot.textContent = best
-            ? `лучшее ${formatTime(best.time)} · попыток ${best.attempts}`
-                + (best.takedowns ? ` · тихо ${best.takedowns}` : '')
-            : '';
-    }
-}
-
-/** Уровень тоже переключается на ходу: правила надо сравнивать на обоих. */
-function setLevel(next) {
-    if (!LEVELS[next]) return;
-    levelId = next;
-    for (const el of document.querySelectorAll('[data-level]')) {
-        el.classList.toggle('is-on', el.dataset.level === levelId);
-    }
-    paintResults();
-    restart();
+    const slot = document.getElementById('best');
+    if (!slot) return;
+    const best = resultFor(levelId);
+    slot.textContent = best
+        ? `лучший проход: ${formatTime(best.time)}, попыток ${best.attempts}`
+        : '';
 }
 
 function show(name) {
@@ -126,9 +114,13 @@ function show(name) {
         document.getElementById('won-time').textContent = formatTime(world.elapsed);
         document.getElementById('won-quiet').textContent = String(world.takedowns);
         document.getElementById('won-best').textContent = best.time < world.elapsed - 0.5
-            ? `лучший проход в этом режиме — ${formatTime(best.time)}`
-            : 'это лучший проход в режиме';
-        paintResults();
+            ? `лучший проход — ${formatTime(best.time)}`
+            : 'это лучший проход';
+        // Уровни идут цепочкой: кнопка ведёт дальше, а не в то же самое.
+        const next = getLevel(levelId).next;
+        const button = document.querySelector('section[data-screen="won"] button');
+        button.textContent = next ? `ДАЛЬШЕ · ${LEVELS[next].name.toUpperCase()}` : 'ЕЩЁ РАЗ';
+        button.dataset.action = next ? 'next' : 'start';
     }
     if (name === 'lost') {
         document.getElementById('lost-score').textContent = String(world.score);
@@ -235,13 +227,19 @@ window.addEventListener('keydown', (event) => {
     if ((screen === 'won' || screen === 'lost') && event.code === 'Enter') restart();
 });
 
-for (const button of document.querySelectorAll('[data-action="start"]')) {
-    button.addEventListener('click', () => {
-        audio.unlock();
-        restart();
-        canvas.focus();
-    });
-}
+// Обработчик один на все экраны: кнопки различает только цель. «Дальше»
+// ведёт на следующий уровень, остальные начинают заново.
+overlay.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    audio.unlock();
+    if (button.dataset.action === 'next') {
+        const next = getLevel(levelId).next;
+        if (next) levelId = next;
+    }
+    restart();
+    canvas.focus();
+});
 
 window.addEventListener('blur', () => {
     touch?.release();
@@ -280,7 +278,6 @@ window.NEON = {
     touch,
     pointer,
     restart,
-    setLevel,
     show,
     /**
      * Прогон без кадров. Ввод берётся общим путём — вместе с сенсором и
@@ -318,26 +315,6 @@ window.NEON = {
  * сломанный запуск обязан сказать о себе.
  */
 try {
-    const levelsBox = document.getElementById('levels');
-    LEVEL_ORDER.forEach((id) => {
-        const level = LEVELS[id];
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'mode level';
-        button.dataset.level = id;
-        button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`
-            + `<em data-best="${id}"></em>`;
-        button.addEventListener('click', () => {
-            audio.unlock();
-            setLevel(id);
-            canvas.focus();
-        });
-        levelsBox.append(button);
-    });
-    for (const el of document.querySelectorAll('[data-level]')) {
-        el.classList.toggle('is-on', el.dataset.level === levelId);
-    }
-
     paintResults();
     show('title');
     requestAnimationFrame(frame);

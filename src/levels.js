@@ -58,22 +58,29 @@ const PERIMETER = [
 ];
 
 export const LEVELS = {
-    perimeter: {
-        id: 'perimeter',
-        name: 'Периметр',
-        hint: 'Стелс: конусы, шум, три развилки',
-        district: 'roofs',
-        rows: PERIMETER,
-    },
     docks: {
         id: 'docks',
         name: 'Доки',
-        hint: 'Первый срез: платформер и дуэли',
+        hint: 'Провалы, стена, шахта',
         district: 'roofs',
         rows: DOCKS,
+        next: 'perimeter',
+    },
+    perimeter: {
+        id: 'perimeter',
+        name: 'Периметр',
+        hint: 'Галерея, колодец, хранилище',
+        district: 'roofs',
+        rows: PERIMETER,
+        next: null,
     },
 };
 
-export const LEVEL_ORDER = ['perimeter', 'docks'];
-export const DEFAULT_LEVEL = 'perimeter';
+/**
+ * Уровни идут один за другим, а не выбираются перед стартом. Выбор из
+ * двух в самом начале — это отладочное меню, а не игра: игрок ещё не
+ * знает, чем они различаются, и выбирать ему нечем.
+ */
+export const LEVEL_ORDER = ['docks', 'perimeter'];
+export const DEFAULT_LEVEL = 'docks';
 export const getLevel = (id) => LEVELS[id] ?? LEVELS[DEFAULT_LEVEL];

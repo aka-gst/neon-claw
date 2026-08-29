@@ -8,7 +8,7 @@
 
 import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, BOW } from './tuning.js';
 import { parseLevel, levelPixelHeight, solidAtPoint } from './level.js';
-import { overlaps, bodyRect } from './physics.js';
+import { overlaps, bodyRect, moveX } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
 import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
@@ -95,7 +95,9 @@ function playerAttacks(world) {
             pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, 3);
-            say(world, 'Гарда. Выжди — она не вечная.', 1.8);
+            // Игрок должен узнать оба ответа, а не догадываться: дуга
+            // тает — значит, есть момент; стрела гарду не замечает вовсе.
+            say(world, 'Гарда. Дуга тает — выжди её. Или пробей стрелой.', 2.4);
         } else {
             spark(world, mid.x, mid.y, 14, '#ff2d95', 260, 0.34);
             world.events.push(result === 'dead' ? 'kill' : 'hit');
@@ -235,6 +237,33 @@ function stepArrows(world, dt) {
     }
 }
 
+/**
+ * Расталкивание. Двое стражей на одном месте сливаются в один силуэт из
+ * перекрещённых линий — по нему нельзя понять ни сколько их, ни куда они
+ * смотрят.
+ *
+ * Двигаем положением, а не скоростью: скорость тут же обрезает патрульный
+ * предел, и толчок пропадает. Через `moveX`, чтобы не расталкивать сквозь
+ * стены — иначе тесный коридор выдавливал бы стражей в камень.
+ */
+function separate(world, level, dt) {
+    const live = world.enemies.filter((e) => e.state !== 'dead');
+    for (let i = 0; i < live.length; i += 1) {
+        for (let j = i + 1; j < live.length; j += 1) {
+            const a = live[i].body;
+            const b = live[j].body;
+            if (Math.abs(a.y - b.y) > ENFORCER.h * 0.7) continue;
+            const gap = Math.abs(b.x - a.x);
+            if (gap >= ENFORCER.spacing) continue;
+            // Совпали ровно — расталкиваем по любому из направлений.
+            const dir = Math.sign(b.x - a.x) || (i % 2 ? 1 : -1);
+            const push = Math.min(ENFORCER.separate * dt, (ENFORCER.spacing - gap) * 0.5);
+            moveX(level, a, -dir * push);
+            moveX(level, b, dir * push);
+        }
+    }
+}
+
 function respawnIfFallen(world) {
     const p = world.player;
     if (p.body.y < levelPixelHeight(world.level) + TILE * 2) return;
@@ -343,6 +372,7 @@ export function stepWorld(world, intent, dt) {
         p.sfx.length = 0;
     }
     for (const e of world.enemies) updateEnforcer(e, world.level, p, dt);
+    separate(world, world.level, dt);
 
     // Когти по бетону: искры. Стена должна ощущаться стеной, а не
     // невидимым режимом падения.

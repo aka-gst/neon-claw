@@ -102,6 +102,14 @@ export function tileAt(level, col, row) {
     return level.tiles[row * level.width + col];
 }
 
+/**
+ * Перекрывает ли точка взгляд. Помосты — да: этаж есть этаж, и решётка
+ * под ногами не делает два помещения одним.
+ */
+export function blocksSight(level, x, y) {
+    return tileAt(level, colAt(x), rowAt(y)) !== AIR;
+}
+
 export const colAt = (x) => Math.floor(x / TILE);
 export const rowAt = (y) => Math.floor(y / TILE);
 

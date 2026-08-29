@@ -13,7 +13,7 @@
 import { ENFORCER } from './tuning.js';
 import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
-import { solidAtPoint } from './level.js';
+import { solidAtPoint, blocksSight } from './level.js';
 
 export function createEnforcer(spawn, index = 0, rules = null) {
     const hp = rules?.hp ?? ENFORCER.hp;
@@ -28,6 +28,8 @@ export function createEnforcer(spawn, index = 0, rules = null) {
         /** Сколько ещё помнит игрока после потери из виду. */
         alert: 0,
         cooldown: 0,
+        /** Копится, пока страж поворачивается. Разворот не мгновенный. */
+        turning: 0,
         guardReady: 0,
         hitstop: 0,
         flash: 0,
@@ -38,6 +40,8 @@ export function createEnforcer(spawn, index = 0, rules = null) {
 
 export const isSwinging = (e) => e.state === 'active';
 export const isGuarding = (e) => e.state === 'guard';
+/** Заметил ли страж героя — для значка над головой. */
+export const isAware = (e) => e.state !== 'patrol' && e.state !== 'dead';
 
 export function enforcerAttackRect(e) {
     const b = e.body;
@@ -62,6 +66,7 @@ export function reviveEnforcer(e, rules = null) {
     e.hitstop = 0;
     e.flash = 0;
     e.facing = -1;
+    e.turning = 0;
     e.body.x = e.home.x;
     e.body.y = e.home.y;
     e.body.vx = 0;
@@ -98,7 +103,9 @@ export function hurtEnforcer(e, fromX, opts = {}) {
     e.hp -= 1;
     e.flash = 0.18;
     e.hitstop = 0.06;
+    // Удар разворачивает мгновенно: боль сама поворачивает голову.
     e.facing = Math.sign(fromX - e.body.x) || e.facing;
+    e.turning = 0;
     e.body.vx = -e.facing * ENFORCER.knockback;
 
     if (e.hp <= 0) {
@@ -126,14 +133,34 @@ export function hurtEnforcer(e, fromX, opts = {}) {
  *
  * Спиной не видят вовсе. Заметив однажды, помнят и следят — развернулись.
  */
-/** Есть ли камень между двумя точками. Шаг в треть тайла — стены толще. */
+/**
+ * Есть ли преграда между двумя точками. Помосты тоже считаются: стоящий
+ * на мостике и стоящий под мостиком находятся в разных помещениях, даже
+ * если между ними решётка.
+ */
 function blocked(level, ax, ay, bx, by) {
     const steps = Math.ceil(Math.hypot(bx - ax, by - ay) / 8);
     for (let i = 1; i < steps; i += 1) {
         const t = i / steps;
-        if (solidAtPoint(level, ax + (bx - ax) * t, ay + (by - ay) * t)) return true;
+        if (blocksSight(level, ax + (bx - ax) * t, ay + (by - ay) * t)) return true;
     }
     return false;
+}
+
+/**
+ * Поворот с задержкой. Мгновенный разворот отменял перекат за спину:
+ * игрок оказывался сзади и в тот же кадр снова оказывался спереди.
+ */
+function face(e, dir, dt) {
+    if (!dir || dir === e.facing) {
+        e.turning = 0;
+        return;
+    }
+    e.turning += dt;
+    if (e.turning >= ENFORCER.turnTime) {
+        e.facing = dir;
+        e.turning = 0;
+    }
 }
 
 /**
@@ -145,16 +172,21 @@ function sees(e, player, level) {
     if (player.state === 'dead') return false;
     const dx = player.body.x - e.body.x;
     const dy = player.body.y - e.body.y;
-    if (Math.abs(dx) >= ENFORCER.sight || Math.abs(dy) >= 70) return false;
+    if (Math.abs(dx) >= ENFORCER.sight || Math.abs(dy) >= ENFORCER.sightRise) return false;
     return !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
         player.body.x, player.body.y - player.body.h * 0.5);
 }
 
 function walk(e, dir, speed, dt) {
     const b = e.body;
+    // Пока разворачивается — не едет: разворот должен быть виден.
+    if (dir !== e.facing) {
+        face(e, dir, dt);
+        brake(e, dt);
+        return;
+    }
     b.vx += dir * ENFORCER.accel * dt;
     if (Math.abs(b.vx) > speed) b.vx = dir * speed;
-    if (dir !== 0) e.facing = dir;
 }
 
 function brake(e, dt) {
@@ -188,7 +220,7 @@ export function updateEnforcer(e, level, player, dt) {
 
     switch (e.state) {
         case 'patrol': {
-            if (b.onGround && edgeAhead(e, level)) e.facing = -e.facing;
+            if (b.onGround && edgeAhead(e, level)) face(e, -e.facing, ENFORCER.turnTime);
             walk(e, e.facing, ENFORCER.patrolSpeed, dt);
             e.anim.walk += Math.abs(b.vx) * dt * 0.1;
             if (sees(e, player, level)) {
@@ -206,8 +238,7 @@ export function updateEnforcer(e, level, player, dt) {
 
             const near = Math.abs(dx) <= ENFORCER.attackRange - 4;
             const level0 = Math.abs(player.body.y - b.y) < 40;
-            if (near && level0 && e.cooldown <= 0) {
-                e.facing = Math.sign(dx) || e.facing;
+            if (near && level0 && e.cooldown <= 0 && Math.sign(dx) === e.facing) {
                 e.state = 'windup';
                 e.t = ENFORCER.windup;
                 event = 'windup';

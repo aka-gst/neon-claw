@@ -192,6 +192,13 @@ body.has-touch .keys-touch { display: grid; }
     color: var(--dim);
 }
 
+/* Запасная раскладка называется, но не занимает отдельной строки:
+   вопрос «зачем это дублируется» возникает именно от двух строк. */
+.keys dd i {
+    font-style: normal;
+    color: rgba(207, 230, 255, 0.32);
+}
+
 .hint {
     margin: 0 auto 1em;
     max-width: 34em;

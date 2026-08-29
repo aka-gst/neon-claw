@@ -14,7 +14,7 @@
 import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW } from './tuning.js';
 import { SOLID, ONEWAY, tileAt, levelPixelHeight } from './level.js';
 import { attackRect } from './player.js';
-import { enforcerAttackRect } from './enemy.js';
+import { enforcerAttackRect, isAware } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
 import { variantAt } from './assets.js';
 import { formatTime } from './results.js';
@@ -459,14 +459,19 @@ function drawEnforcer(ctx, e, glowPass, time) {
 
     /* клинок и гарда */
     if (e.state === 'guard') {
-        // Гарда — дуга поперёк корпуса. Её видно раньше, чем понимаешь,
-        // что бьёшь в пустоту, и это честно.
-        const pulse = 0.75 + Math.sin(time * 18) * 0.25 + e.anim.guard * 1.5;
-        ctx.globalAlpha = Math.min(1, pulse);
+        /*
+         * Гарда — дуга поперёк корпуса, и она ПОКАЗЫВАЕТ ОСТАТОК: чем
+         * меньше времени ей осталось, тем короче и тусклее. Иначе бой
+         * читается как «бью и ничего не происходит», а на самом деле в
+         * нём есть точный момент, ради которого стоит подождать.
+         */
+        const left = Math.max(0, Math.min(1, e.t / ENFORCER.guard));
+        const span = 0.35 + left * 0.85;
+        ctx.globalAlpha = Math.min(1, 0.35 + left * 0.6 + e.anim.guard * 1.5);
         ctx.beginPath();
-        ctx.arc(4, hip - 4, 15, -1.15, 1.15);
+        ctx.arc(4, hip - 4, 15, -span, span);
         ctx.strokeStyle = FOE.guard;
-        ctx.lineWidth = lw(2.6);
+        ctx.lineWidth = lw(1.6 + left * 1.4);
         ctx.stroke();
         ctx.globalAlpha = 1;
         drawBlade(ctx, [5, shoulder + 4], -1.55, 20, FOE.guard, lw(2.2), null);
@@ -497,6 +502,31 @@ function drawEnforcer(ctx, e, glowPass, time) {
 }
 
 /* ------------------------------------------------------------------- сцена */
+
+/**
+ * «Заметил». Игрок должен видеть, что бой начался, раньше, чем получит
+ * удар: непонятая агрессия читается как несправедливость, а не как своя
+ * ошибка. Дешёвый знак над головой стоит дороже любого баланса.
+ */
+function drawAware(ctx, world, glowPass, time) {
+    const lw = (w) => (glowPass ? w * HALO : w);
+    for (const e of world.enemies) {
+        if (!isAware(e)) continue;
+        const x = e.body.x;
+        const y = e.body.y - e.body.h - 11 - Math.abs(Math.sin(time * 7)) * 2.5;
+        ctx.strokeStyle = '#ff3b5c';
+        ctx.lineWidth = lw(2.2);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x, y - 6);
+        ctx.lineTo(x, y + 1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y + 4.5, 1, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+    }
+}
 
 function drawCheckpoints(ctx, world, glowPass, time) {
     const lw = (w) => (glowPass ? w * HALO : w);
@@ -788,6 +818,7 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
     }
 
     drawArrows(ctx, world, glowPass);
+    drawAware(ctx, world, glowPass, world.time);
     drawSparks(ctx, world, glowPass);
 }
 

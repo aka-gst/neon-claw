@@ -41,6 +41,9 @@ export function createPlayer(spawn) {
 
         wall: 0,
         wallCoyote: 0,
+        /** Сторона, с которой только что оттолкнулись, и запрет на возврат. */
+        lastWall: 0,
+        wallLock: 0,
         dashReady: true,
         dashTimer: 0,
         dashCooldown: 0,
@@ -213,6 +216,8 @@ function vertical(p, intent, dt) {
             p.pushLock = WALL.lock;
             p.cutUsed = false;
             p.wallCoyote = 0;
+            p.lastWall = p.wall;
+            p.wallLock = WALL.sameWallLock;
             p.wall = 0;
             p.buffer = 0;
             p.dashReady = true;
@@ -238,6 +243,8 @@ function tryWall(p, level, intent) {
     if (b.onGround || b.vy < -WALL.catchRise || p.state !== 'move') return false;
     const side = wallSide(level, b);
     if (side === 0) return false;
+    // На ту же стену сразу возвращаться нельзя — иначе по ней лезут вверх.
+    if (p.wallLock > 0 && side === p.lastWall) return false;
     // Прижаться — сознательное действие: клавиша в сторону стены.
     if (!((side > 0 && intent.right) || (side < 0 && intent.left))) return false;
 
@@ -269,6 +276,8 @@ function updateWall(p, level, intent, dt) {
         p.pushLock = WALL.lock;
         p.cutUsed = false;
         p.state = 'move';
+        p.lastWall = p.wall;
+        p.wallLock = WALL.sameWallLock;
         p.wall = 0;
         p.buffer = 0;
         p.wallCoyote = 0;
@@ -466,6 +475,7 @@ export function updatePlayer(p, level, intent, dt) {
     p.dropLock = Math.max(0, p.dropLock - dt);
     p.controlLock = Math.max(0, p.controlLock - dt);
     p.pushLock = Math.max(0, p.pushLock - dt);
+    p.wallLock = Math.max(0, p.wallLock - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.anim.hurtFlash = Math.max(0, p.anim.hurtFlash - dt);
     p.anim.land = Math.max(0, p.anim.land - dt);
@@ -525,6 +535,7 @@ export function updatePlayer(p, level, intent, dt) {
         p.cutUsed = true;
         p.dashReady = true;
         p.wall = 0;
+        p.lastWall = 0;
     }
 
     if (p.state === 'move') {
