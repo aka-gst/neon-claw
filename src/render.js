@@ -17,6 +17,7 @@ import { attackRect } from './player.js';
 import { enforcerAttackRect, sightCone } from './enemy.js';
 import { createBackdrop, drawBackdrop } from './backdrop.js';
 import { variantAt } from './assets.js';
+import { formatTime } from './results.js';
 
 const GLOW_SCALE = 2;
 /**
@@ -744,7 +745,7 @@ function drawHud(ctx, world) {
     ctx.fillStyle = 'rgba(255, 200, 87, 0.7)';
     ctx.fillText(world.mode.name.toUpperCase(), 22, 38);
     ctx.fillStyle = 'rgba(125, 252, 255, 0.4)';
-    ctx.fillText(`ПОПЫТКА ${world.attempts}`, 22, 52);
+    ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 52);
     if (world.takedowns > 0) {
         ctx.fillStyle = 'rgba(77, 255, 184, 0.7)';
         ctx.fillText(`СНЯТО ТИХО ${world.takedowns}`, 22, 66);

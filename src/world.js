@@ -44,6 +44,8 @@ export function createWorld(rows, modeId = DEFAULT_MODE) {
         reached: new Set(),
         attempts: 1,
         takedowns: 0,
+        /** Чистое время забега: идёт только пока играют. */
+        elapsed: 0,
         /** Пауза после смерти: без неё откат не читается как событие. */
         freeze: 0,
         notice: null,
@@ -254,6 +256,8 @@ export function stepWorld(world, intent, dt) {
         if (world.freeze <= 0) restartFromCheckpoint(world);
         return;
     }
+
+    world.elapsed += dt;
 
     const p = world.player;
     updatePlayer(p, world.level, intent, dt);

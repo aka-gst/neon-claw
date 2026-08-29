@@ -14,6 +14,7 @@ import { createInput, readIntent } from './input.js';
 import { createAudio } from './audio.js';
 import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
 import { loadTileset } from './assets.js';
+import { recordRun, resultFor, formatTime } from './results.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -50,10 +51,23 @@ function show(name) {
     screen = name;
     overlay.dataset.show = name;
     if (name === 'won') {
+        const best = recordRun(world.mode.id, {
+            time: world.elapsed,
+            attempts: world.attempts,
+            takedowns: world.takedowns,
+            score: world.score,
+            loot: world.collected,
+        });
         document.getElementById('won-score').textContent = String(world.score);
         document.getElementById('won-loot').textContent = `${world.collected} / ${world.totalLoot}`;
         document.getElementById('won-mode').textContent = world.mode.name;
         document.getElementById('won-tries').textContent = String(world.attempts);
+        document.getElementById('won-time').textContent = formatTime(world.elapsed);
+        document.getElementById('won-quiet').textContent = String(world.takedowns);
+        document.getElementById('won-best').textContent = best.time < world.elapsed - 0.5
+            ? `лучший проход в этом режиме — ${formatTime(best.time)}`
+            : 'это лучший проход в режиме';
+        paintModeResults();
     }
     if (name === 'lost') {
         document.getElementById('lost-score').textContent = String(world.score);
@@ -153,6 +167,7 @@ window.NEON = {
     input,
     restart,
     setMode,
+    show,
     advance(keys = {}, seconds = 1) {
         const base = {
             left: false, right: false, up: false, down: false,
@@ -190,7 +205,8 @@ MODE_ORDER.forEach((id, i) => {
     button.type = 'button';
     button.className = 'mode';
     button.dataset.mode = id;
-    button.innerHTML = `<b>${i + 1}. ${mode.name}</b><i>${mode.kin}</i><span>${mode.blurb}</span>`;
+    button.innerHTML = `<b>${i + 1}. ${mode.name}</b><i>${mode.kin}</i>`
+        + `<span>${mode.blurb}</span><em data-best="${id}"></em>`;
     button.addEventListener('click', () => {
         audio.unlock();
         setMode(id);
@@ -199,6 +215,18 @@ MODE_ORDER.forEach((id, i) => {
     modesBox.append(button);
 });
 
+/** Итоги прошлых прогонов прямо на карточках: выбирать удобнее рядом с цифрами. */
+function paintModeResults() {
+    for (const slot of document.querySelectorAll('[data-best]')) {
+        const best = resultFor(slot.dataset.best);
+        slot.textContent = best
+            ? `лучшее ${formatTime(best.time)} · попыток ${best.attempts}`
+                + (best.takedowns ? ` · тихо ${best.takedowns}` : '')
+            : '';
+    }
+}
+
+paintModeResults();
 for (const el of document.querySelectorAll('[data-mode]')) {
     el.classList.toggle('is-on', el.dataset.mode === modeId);
 }
