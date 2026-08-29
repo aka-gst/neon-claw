@@ -165,6 +165,12 @@ h2 {
 }
 
 /* Четыре карточки в ряд, когда рамка широкая, и попарно, когда узкая. */
+.modes.levels {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 26em;
+    margin-bottom: 0.9em;
+}
+
 .modes {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(9.5em, 1fr));

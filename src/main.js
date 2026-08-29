@@ -14,6 +14,7 @@ import { createInput, readIntent } from './input.js';
 import { createAudio } from './audio.js';
 import { MODES, MODE_ORDER, DEFAULT_MODE } from './combat.js';
 import { loadTileset } from './assets.js';
+import { LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
 
 const canvas = document.getElementById('screen');
@@ -29,7 +30,8 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 loadTileset('roofs').then((tiles) => { renderer.tiles = tiles; });
 
 let modeId = DEFAULT_MODE;
-let world = createWorld(undefined, modeId);
+let levelId = DEFAULT_LEVEL;
+let world = createWorld(getLevel(levelId).rows, modeId);
 let camera = createCamera(world);
 let screen = 'title';
 
@@ -47,11 +49,22 @@ function setMode(next) {
     restart();
 }
 
+/** Уровень тоже переключается на ходу: правила надо сравнивать на обоих. */
+function setLevel(next) {
+    if (!LEVELS[next]) return;
+    levelId = next;
+    for (const el of document.querySelectorAll('[data-level]')) {
+        el.classList.toggle('is-on', el.dataset.level === levelId);
+    }
+    paintModeResults();
+    restart();
+}
+
 function show(name) {
     screen = name;
     overlay.dataset.show = name;
     if (name === 'won') {
-        const best = recordRun(world.mode.id, {
+        const best = recordRun(`${levelId}:${world.mode.id}`, {
             time: world.elapsed,
             attempts: world.attempts,
             takedowns: world.takedowns,
@@ -76,7 +89,7 @@ function show(name) {
 }
 
 function restart() {
-    world = createWorld(undefined, modeId);
+    world = createWorld(getLevel(levelId).rows, modeId);
     camera = createCamera(world);
     show('none');
 }
@@ -127,6 +140,9 @@ window.addEventListener('keydown', (event) => {
     if (event.code === 'F2') renderer.debug = !renderer.debug;
     const slot = /^Digit([1-4])$/.exec(event.code);
     if (slot) setMode(MODE_ORDER[Number(slot[1]) - 1]);
+    if (event.code === 'KeyL') {
+        setLevel(LEVEL_ORDER[(LEVEL_ORDER.indexOf(levelId) + 1) % LEVEL_ORDER.length]);
+    }
     if (screen === 'title' && (event.code === 'Space' || event.code === 'Enter')) {
         event.preventDefault();
         restart();
@@ -167,6 +183,7 @@ window.NEON = {
     input,
     restart,
     setMode,
+    setLevel,
     show,
     advance(keys = {}, seconds = 1) {
         const base = {
@@ -218,12 +235,31 @@ MODE_ORDER.forEach((id, i) => {
 /** Итоги прошлых прогонов прямо на карточках: выбирать удобнее рядом с цифрами. */
 function paintModeResults() {
     for (const slot of document.querySelectorAll('[data-best]')) {
-        const best = resultFor(slot.dataset.best);
+        const best = resultFor(`${levelId}:${slot.dataset.best}`);
         slot.textContent = best
             ? `лучшее ${formatTime(best.time)} · попыток ${best.attempts}`
                 + (best.takedowns ? ` · тихо ${best.takedowns}` : '')
             : '';
     }
+}
+
+const levelsBox = document.getElementById('levels');
+LEVEL_ORDER.forEach((id) => {
+    const level = LEVELS[id];
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mode level';
+    button.dataset.level = id;
+    button.innerHTML = `<b>${level.name}</b><span>${level.hint}</span>`;
+    button.addEventListener('click', () => {
+        audio.unlock();
+        setLevel(id);
+        canvas.focus();
+    });
+    levelsBox.append(button);
+});
+for (const el of document.querySelectorAll('[data-level]')) {
+    el.classList.toggle('is-on', el.dataset.level === levelId);
 }
 
 paintModeResults();

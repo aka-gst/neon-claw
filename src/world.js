@@ -132,6 +132,9 @@ function playerAttacks(world) {
             world.score += 150;
             world.takedowns += 1;
             emitNoise(world, e.body.x, e.body.y - e.body.h / 2, NOISE.takedown, 'quiet');
+            // Снятие сверху кончается приземлением. Если оно грохочет, тихого
+            // снятия не существует — значит, гасим его вместе с ударом.
+            p.silentLand = 0.45;
             p.hitstop = SWORD.hitstop * 1.4;
             world.shake = Math.max(world.shake, 5);
             say(world, kind === 'above' ? 'Сверху. Он даже не обернулся.' : 'Со спины. Чисто.', 1.4);
@@ -304,6 +307,7 @@ export function stepWorld(world, intent, dt) {
     updatePlayer(p, world.level, intent, dt);
     if (p.sfx.length) {
         for (const cue of p.sfx) {
+            if (cue === 'land' && p.silentLand > 0) continue;
             const radius = POINT_NOISE[cue];
             if (radius) emitNoise(world, p.body.x, p.body.y, radius, cue);
         }
