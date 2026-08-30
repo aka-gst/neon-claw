@@ -136,6 +136,9 @@ export function createAudio() {
     let muted = false;
     return {
         unlock: ensure,
+        /** Состояние звукового движка — для проверки на живом адресе. */
+        get state() { return ctx ? ctx.state : 'нет контекста'; },
+        get voices() { return Object.keys(VOICES); },
         get muted() { return muted; },
         toggle() {
             muted = !muted;

@@ -306,6 +306,7 @@ window.NEON = {
     renderer,
     input,
     touch,
+    audio,
     pointer,
     restart,
     show,
