@@ -16,6 +16,7 @@ import { createAudio } from './audio.js';
 import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
+import { pulse } from './pulse.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -101,6 +102,14 @@ function show(name) {
     document.body.classList.toggle('menu-open', name !== 'none');
     if (name !== 'none') touch?.release();
     if (name === 'won') {
+        pulse('level-clear', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+            loot: world.collected,
+            of: world.totalLoot,
+            score: world.score,
+        });
         const best = recordRun(levelId, {
             time: world.elapsed,
             attempts: world.attempts,
@@ -123,11 +132,21 @@ function show(name) {
         button.dataset.action = next ? 'next' : 'start';
     }
     if (name === 'lost') {
+        pulse('level-fail', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+            score: world.score,
+        });
         document.getElementById('lost-score').textContent = String(world.score);
     }
 }
 
+let started = 0;
+
 function restart() {
+    started += 1;
+    pulse('level-start', { level: levelId, run: started });
     world = createWorld(getLevel(levelId).rows);
     camera = createCamera(world);
     show('none');
@@ -149,6 +168,17 @@ function frame(now) {
     if (input.take('pause')) {
         if (screen === 'none') show('paused');
         else if (screen === 'paused') show('none');
+    }
+
+    // Серия смертей — отдельная точка выхода: бросают именно здесь, а не
+    // на поражении. Отмечаем один раз за забег, чтобы не залить данные.
+    if (world.attempts >= 5 && !world.reported) {
+        world.reported = true;
+        pulse('level-stuck', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+        });
     }
 
     if (screen === 'none') {
