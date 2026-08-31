@@ -16,11 +16,27 @@
  * время не может закрыться снова, и выждавший успевает добить.
  */
 
+import { BLADES } from './tuning.js';
+
 export const RULES = {
     player: { hp: 5, retry: 'checkpoint' },
-    enemy: { hp: 3, guard: 'meter', parry: false },
+    enemy: { hp: 6, guard: 'meter', parry: false },
 };
 
 /** Раскрыт ли страж — то есть занят ли он собственной атакой. */
 export const OPEN_STATES = new Set(['windup', 'active', 'recover']);
 export const isOpen = (enemy) => OPEN_STATES.has(enemy.state);
+
+/** Кто кого рвёт. Пока стихий две, но правило готово к третьей. */
+export const COUNTERS = { heat: 'frost', frost: 'heat' };
+
+/**
+ * Множитель удара. Он бьёт не только по урону, но и по гарде — иначе
+ * выбор клинка сводился бы к арифметике, а он должен менять сам ритм боя.
+ */
+export function elementFactor(blade, foe) {
+    if (!blade || !foe) return 1;
+    if (blade === foe) return BLADES.weak;
+    if (COUNTERS[foe] === blade) return BLADES.counter;
+    return 1;
+}

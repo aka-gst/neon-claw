@@ -373,7 +373,7 @@ body.has-touch .frame {
     flex: 1 1 45%;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: 'dash jump' 'attack jump' 'bow jump';
+    grid-template-areas: 'dash jump' 'attack jump' 'bow jump' 'swap jump';
     gap: 6px;
     padding: 6px;
 }
@@ -381,6 +381,8 @@ body.has-touch .frame {
 .tbtn[data-touch='dash'] { grid-area: dash; }
 .tbtn[data-touch='attack'] { grid-area: attack; }
 .tbtn[data-touch='bow'] { grid-area: bow; border-color: rgba(77, 255, 184, 0.42); }
+.tbtn[data-touch='swap'] { grid-area: swap; border-color: rgba(255, 138, 61, 0.42); }
+.tbtn[data-touch='swap'].is-frost { border-color: rgba(127, 232, 255, 0.5); }
 .tbtn.tbig { grid-area: jump; border-color: rgba(255, 45, 149, 0.42); }
 
 .tbtn.is-down,
@@ -426,7 +428,10 @@ body.has-touch .frame {
         flex: 1 1 48%;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: 1fr 1fr 1.1fr;
-        grid-template-areas: 'dash attack' 'bow bow' 'jump jump';
+        /* Смена клинка встала рядом с луком, а не отдельным рядом: высота
+           слоя рассчитана под большой палец, и отнимать её у прыжка —
+           самой частой кнопки — было бы хуже, чем сузить лук. */
+        grid-template-areas: 'dash attack' 'bow swap' 'jump jump';
         padding: 0;
     }
 

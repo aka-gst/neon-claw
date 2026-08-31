@@ -16,6 +16,12 @@ const BINDINGS = {
     attack: ['KeyJ', 'KeyX'],
     dash: ['ShiftLeft', 'ShiftRight', 'KeyK'],
     bow: ['KeyF', 'KeyE'],
+    // Клинки меняются мгновенно: Q перекидывает, 1 и 2 берут нужный
+    // напрямую. Колеса выбора нет — оно крадёт ровно тот темп, ради
+    // которого стихии и заводились.
+    swap: ['KeyQ'],
+    blade1: ['Digit1'],
+    blade2: ['Digit2'],
     pause: ['Escape', 'KeyP'],
     restart: ['KeyR'],
 };
@@ -91,7 +97,14 @@ export function readIntent(input, touch = null, pointer = null) {
     const padJump = Boolean(touch?.take('jump'));
     const padAttack = Boolean(touch?.take('attack'));
     const padDash = Boolean(touch?.take('dash'));
+    // Снимать нажатия надо до сравнений — по той же причине, что и выше.
+    const swap = input.take('swap');
+    const padSwap = Boolean(touch?.take('swap'));
+    const pick1 = input.take('blade1');
+    const pick2 = input.take('blade2');
     return {
+        swapDown: swap || padSwap,
+        bladeIndex: pick1 ? 0 : (pick2 ? 1 : null),
         left: input.held('left') || Boolean(t?.left),
         right: input.held('right') || Boolean(t?.right),
         up: input.held('up') || Boolean(t?.up),

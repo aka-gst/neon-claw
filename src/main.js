@@ -6,7 +6,7 @@
  * прыжок выходит выше, чем на 60, и настраивать его становится нечем.
  */
 
-import { STEP, VIEW, fitView } from './tuning.js';
+import { STEP, VIEW, fitView, BLADES } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
@@ -160,6 +160,21 @@ function drainSound() {
 let last = performance.now();
 let accumulator = 0;
 
+const swapButton = document.getElementById('tswap');
+
+/**
+ * Кнопка смены клинка на телефоне сама говорит, что сейчас в руке. На
+ * маленьком экране угол с иконками теряется, а палец уже лежит на кнопке —
+ * пусть подпись и будет главным указателем.
+ */
+function paintSwapButton(world) {
+    if (!swapButton) return;
+    const held = BLADES[world.player.blade];
+    if (!held) return;
+    if (swapButton.textContent !== held.name) swapButton.textContent = held.name;
+    swapButton.classList.toggle('is-frost', held.id === 'frost');
+}
+
 function frame(now) {
     const elapsed = Math.min(0.2, (now - last) / 1000);
     last = now;
@@ -200,6 +215,7 @@ function frame(now) {
     updateCamera(camera, world, elapsed);
     resizeRenderer(renderer);
     render(renderer, world, camera);
+    paintSwapButton(world);
     requestAnimationFrame(frame);
 }
 
@@ -310,6 +326,7 @@ window.NEON = {
     pointer,
     restart,
     show,
+    paintSwapButton,
     /**
      * Прогон без кадров. Ввод берётся общим путём — вместе с сенсором и
      * мышью: хук, который строит намерение по-своему, проверяет не игру,
@@ -324,6 +341,11 @@ window.NEON = {
                 jumpDown: Boolean(keys.jumpDown) && i === 0,
                 attackDown: Boolean(keys.attackDown) && i === 0,
                 dashDown: Boolean(keys.dashDown) && i === 0,
+                // Смена клинка — тоже фронт: иначе зажатое в хуке нажатие
+                // перекидывало бы клинок каждый шаг, и прогон проверял бы
+                // не игру, а сам себя.
+                swapDown: Boolean(keys.swapDown) && i === 0,
+                bladeIndex: i === 0 ? (keys.bladeIndex ?? null) : null,
             }, STEP);
             world.events.length = 0;
             updateCamera(camera, world, STEP);
@@ -334,6 +356,7 @@ window.NEON = {
         return {
             x: Math.round(p.body.x), y: Math.round(p.body.y),
             state: p.state, hp: p.hp, score: world.score, phase: world.phase,
+            blade: p.blade,
             attempts: world.attempts, takedowns: world.takedowns,
         };
     },

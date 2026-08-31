@@ -18,7 +18,7 @@
  * рывок — четыре тайла провала, подкат — щель в один тайл.
  */
 
-import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, BOW, STEP } from './tuning.js';
+import { PLAYER, LEDGE, SWORD, WALL, DASH, SLIDE, BOW, STEP, BLADES } from './tuning.js';
 import { makeBody, moveX, moveY, findLedge, wallSide, headroom } from './physics.js';
 
 export function createPlayer(spawn) {
@@ -50,6 +50,10 @@ export function createPlayer(spawn) {
         slideTimer: 0,
 
         attack: { phase: 'none', t: 0, hits: new Set() },
+        /** Клинок в руке. Меняется мгновенно и ничего не стоит. */
+        blade: BLADES.order[0],
+        /** Гаснущая подсветка смены — чтобы рука видела, что услышана. */
+        bladeFlash: 0,
         /** Лук: натяжение, угол и колчан. `release` мир забирает и обнуляет. */
         bow: { drawing: false, t: 0, power: 0, angle: 0, arrows: BOW.arrows, release: null },
         ledge: null,
@@ -465,7 +469,30 @@ export function pushPlayer(p, fromX, force) {
 
 /* --------------------------------------------------------------------- шаг */
 
+/**
+ * Смена клинка. Работает ВСЕГДА — в прыжке, на рывке, посреди взмаха и,
+ * главное, в кадрах замирания от собственного удара: именно там ей и место,
+ * потому что раскол собирается из двух ударов подряд разными стихиями.
+ * Ни отката, ни потери скорости — иначе стихии перестанут быть частью
+ * связки и станут отдельным меню.
+ */
+export function stepBlade(p, intent) {
+    const was = p.blade;
+    if (intent.bladeIndex !== null && intent.bladeIndex !== undefined) {
+        p.blade = BLADES.order[intent.bladeIndex] ?? p.blade;
+    } else if (intent.swapDown) {
+        p.blade = BLADES.order[(BLADES.order.indexOf(p.blade) + 1) % BLADES.order.length];
+    }
+    if (p.blade !== was) {
+        p.bladeFlash = 0.22;
+        p.sfx.push('swap');
+    }
+}
+
 export function updatePlayer(p, level, intent, dt) {
+    stepBlade(p, intent);
+    p.bladeFlash = Math.max(0, p.bladeFlash - dt);
+
     if (p.hitstop > 0) {
         p.hitstop -= dt;
         return;
