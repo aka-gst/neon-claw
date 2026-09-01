@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createWorld, stepWorld } from '../src/world.js';
 import { TILE, STEP } from '../src/tuning.js';
 import { intent } from './helpers.mjs';
-import { MAP as DOCKS } from '../src/level.js';
+import { MAP as DOCKS, footingAt } from '../src/level.js';
 
 /**
  * Уровень должен проходиться. Тесты ниже — не про красоту, а про то, что
@@ -70,12 +70,8 @@ test('стена перед шахтой не обходится по земле
  * показал две разные вещи, и только одна из них была поломкой.
  */
 
-/** Есть ли твёрдое в этой точке карты. */
-const твёрдо = (world, x, y) => {
-    const row = world.level.rows[Math.floor(y / TILE)];
-    const ch = row && row[Math.floor(x / TILE)];
-    return Boolean(ch && ch !== '.' && ch !== ' ');
-};
+/** Опора под точкой — общей функцией игры, а не самодельной проверкой. */
+const твёрдо = (world, x, y) => footingAt(world.level, x, y);
 
 test('точка возврата не встаёт на край ямы — иначе падение роняет обратно', () => {
     const world = createWorld(DOCKS);
