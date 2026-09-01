@@ -52,13 +52,49 @@ echo "выкладка"
 ssh "$SSH_HOST" "mkdir -p '$SITE_ROOT/$GAME_PATH'"
 rsync -a --delete "$STAGE/" "$SSH_HOST:$SITE_ROOT/$GAME_PATH/"
 
-echo "проверка живых адресов"
+# Код ответа не доказывает НИЧЕГО: двести отдаёт и вчерашняя копия. Сверяем
+# содержимое — считаем хеш того, что уехало, и того, что отдаёт сервер.
+# Повод: соседняя сессия проверяла починку на бою, не нашла её и полезла
+# читать файл руками — потому что сказать «выложено или нет» было нечем.
+# Сеть рвётся на паре процентов запросов, поэтому каждому запросу ретраи.
+echo "проверка живых адресов и содержимого"
 BASE="https://aka-gst.ru/$GAME_PATH"
-for path in "/" "/src/main.js" "/styles/game.css" "/assets/tiles/roofs.json" "/assets/backdrop/roofs-far.png"; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$path")
-  printf '  %-40s %s\n' "$path" "$code"
-  [ "$code" = 200 ] || { echo "ОШИБКА: $BASE$path отдаёт $code" >&2; exit 1; }
+FAIL=0
+for path in "/index.html" "/src/main.js" "/src/world.js" "/src/enemy.js" "/src/tuning.js" "/styles/game.css" "/assets/tiles/roofs.json"; do
+  code=$(curl -s --retry 4 --retry-all-errors --max-time 20 -o /tmp/claw-live -w '%{http_code}' "$BASE$path")
+  if [ "$code" != 200 ]; then
+    printf '  %-34s %s  ОТВЕТ НЕ 200\n' "$path" "$code"
+    FAIL=1
+    continue
+  fi
+  want=$(shasum -a 256 "$STAGE$path" | cut -d' ' -f1)
+  got=$(shasum -a 256 /tmp/claw-live | cut -d' ' -f1)
+  # Если сам измеритель не отработал, оба хеша пустые — и пустое РАВНО
+  # пустому, то есть проверка радостно печатает «совпало» на ровном месте.
+  # Поймано вживую: песочница не пустила shasum, и сверка объявила совпавшими
+  # файлы, которые отличаются на четыре килобайта. Молчащий инструмент обязан
+  # быть ошибкой, а не успехом.
+  if [ -z "$want" ] || [ -z "$got" ] || [ ! -s /tmp/claw-live ]; then
+    printf '  %-34s %s  ПРОВЕРКА НЕ ОТРАБОТАЛА (нечем сверить)\n' "$path" "$code"
+    FAIL=1
+  elif [ "$want" = "$got" ]; then
+    printf '  %-34s %s  совпало\n' "$path" "$code"
+  else
+    printf '  %-34s %s  НЕ ТО СОДЕРЖИМОЕ (уехало %s, отдаёт %s)\n' \
+      "$path" "$code" "$(wc -c < "$STAGE$path" | tr -d ' ')" "$(wc -c < /tmp/claw-live | tr -d ' ')"
+    FAIL=1
+  fi
 done
+rm -f /tmp/claw-live
+
+# Внутренние файлы наружу отдавать нельзя, и чёрный список тут не годится:
+# он защищает лишь от того, что успели в него вписать.
+for path in "/docs/todo.md" "/CLAUDE.md" "/package.json" "/tests/impact.test.mjs"; do
+  code=$(curl -s --retry 3 --max-time 15 -o /dev/null -w '%{http_code}' "$BASE$path")
+  [ "$code" = 404 ] || { printf '  %-34s %s  ДОЛЖНО БЫТЬ 404\n' "$path" "$code"; FAIL=1; }
+done
+
+[ "$FAIL" = 0 ] || { echo "ОШИБКА: бой не совпал с тем, что уехало" >&2; exit 1; }
 
 echo
 echo "готово: $BASE/"
