@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createWorld, stepWorld } from '../src/world.js';
-import { STEP, TILE } from '../src/tuning.js';
+import { STEP, TILE, SWORD } from '../src/tuning.js';
 import { intent } from './helpers.mjs';
 
 const ARENA = [
@@ -93,4 +93,41 @@ test('звон подсвечивает гарду, попадание — те�
     const blocked = swing(guarding(), 14);
     assert.equal(blocked.flash, 0, 'звон зря подсветил тело');
     assert.ok(blocked.guardAnim > 0, 'гарда не вспыхнула на звоне');
+});
+
+/**
+ * Два теста ниже пришли от сессии ПЕРЕЛОМА — они забрали наш приём с
+ * направлением искр, а взамен показали, чего у нас не хватало.
+ */
+
+test('исходы расходятся не одним признаком, а двумя независимыми', () => {
+    // Один признак — это удача, а не читаемость: цвет пропадёт у дальтоника,
+    // искры потеряются на пёстром фоне, вспышка сольётся со вспышкой соседа.
+    // Требуем два канала, которые ломаются по разным причинам.
+    const hit = swing(createWorld(ARENA), 14);
+    const blocked = swing(guarding(), 14);
+
+    const признаки = [
+        ['ход искр', Math.sign(drift(hit)) !== Math.sign(drift(blocked))],
+        ['что вспыхнуло', (hit.flash > 0) !== (blocked.flash > 0)],
+    ].filter(([, разошлось]) => разошлось);
+
+    assert.ok(признаки.length >= 2,
+        `попадание и звон различает лишь ${признаки.length} признак: ${признаки.map(([n]) => n)}`);
+});
+
+test('замирание на попадании держит порог — иначе промах нечем отличить', () => {
+    // Промах у нас читается тем, что время НЕ замерло. Это работает ровно
+    // до тех пор, пока замирание вообще заметно: уронят хитстоп ради темпа —
+    // и промах станет неотличим от «игра не заметила нажатие».
+    // Порог берём по нижней границе восприятия паузы, ~3 кадра при 60 к/с.
+    const ЗАМЕТНО = 0.05;
+    const hit = swing(createWorld(ARENA), 14);
+    assert.ok(hit.hitstop >= ЗАМЕТНО,
+        `замирание ${hit.hitstop.toFixed(3)} с — короче порога ${ЗАМЕТНО} с`);
+    assert.ok(SWORD.hitstop >= ЗАМЕТНО,
+        `SWORD.hitstop опустили до ${SWORD.hitstop} — контраст с промахом пропал`);
+
+    const miss = swing(createWorld(ARENA), 6 * TILE);
+    assert.equal(miss.hitstop, 0, 'промах тоже замирает — контраста нет');
 });
