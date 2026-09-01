@@ -6,7 +6,7 @@
  * прыжок выходит выше, чем на 60, и настраивать его становится нечем.
  */
 
-import { STEP, VIEW, fitView, BLADES } from './tuning.js';
+import { STEP, VIEW, fitView, BLADES, LOOP } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
@@ -176,7 +176,7 @@ function paintSwapButton(world) {
 }
 
 function frame(now) {
-    const elapsed = Math.min(0.2, (now - last) / 1000);
+    const elapsed = Math.min(LOOP.maxElapsed, (now - last) / 1000);
     last = now;
 
     if (input.take('restart') && screen !== 'title') restart();
@@ -199,12 +199,12 @@ function frame(now) {
     if (screen === 'none') {
         accumulator += elapsed;
         let steps = 0;
-        while (accumulator >= STEP && steps < 8) {
+        while (accumulator >= STEP && steps < LOOP.maxSteps) {
             stepWorld(world, readIntent(input, touch, pointer), STEP);
             accumulator -= STEP;
             steps += 1;
         }
-        if (accumulator > STEP * 8) accumulator = 0;
+        if (accumulator > STEP * LOOP.maxSteps) accumulator = 0;
         if (reduceMotion) world.shake = 0;
         drainSound();
 

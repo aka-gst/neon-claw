@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createWorld, stepWorld } from '../src/world.js';
 import { parseLevel } from '../src/level.js';
 import { createPlayer, updatePlayer } from '../src/player.js';
-import { STEP, TILE, ENFORCER, WALL, PLAYER } from '../src/tuning.js';
+import { STEP, TILE, ENFORCER, WALL, PLAYER, LOOP } from '../src/tuning.js';
 import { intent } from './helpers.mjs';
 
 /**
@@ -124,4 +124,16 @@ test('зигзаг между двух стен по-прежнему работ
     }
     assert.ok((start - best) / TILE > 8,
         `зигзаг поднял всего на ${((start - best) / TILE).toFixed(1)} тайла`);
+});
+
+test('игра не уходит в замедление на телефоне: порог догона выше 20 кадров', () => {
+    // Ниже этого порога игровое время отстаёт от настоящего, и догона нет.
+    // Это не косметика: враг не доходит, таймер не истекает, а автомат снимает
+    // с этого числа и выдаёт их за свойства игры.
+    const порог = 1 / (LOOP.maxSteps * STEP);
+    assert.ok(порог <= 20,
+        `замедление начинается с ${порог.toFixed(0)} к/с — телефон под нагрузкой туда попадает`);
+    // Ограничитель нужен: без него свёрнутая вкладка отмотала бы весь простой.
+    assert.ok(LOOP.maxSteps * STEP <= LOOP.maxElapsed,
+        'ограничитель не ограничивает — после паузы мир отмотает всё разом');
 });
