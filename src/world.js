@@ -161,7 +161,7 @@ function playerAttacks(world) {
                 ring(world, mid.x, mid.y, { color: BLADES.heat.tint, r0: 8, grow: 120, life: 0.34, width: 2 });
                 p.hitstop = SWORD.hitstop * 2;
                 world.shake = Math.max(world.shake, 9);
-                say(world, 'Раскол! Гарда не встанет — добивай.', 1.8);
+                say(world, 'Раскол! Гарда не встанет.', 1.8);
             }
             // Попадание уходит СКВОЗЬ врага: широкий веер по ходу клинка
             // плюс короткая полная вспышка в точке касания.

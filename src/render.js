@@ -877,6 +877,28 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
     drawSparks(ctx, world, glowPass);
 }
 
+/**
+ * Разбивка подписи по словам под заданную ширину. Длинное слово, которое
+ * не влезает целиком, оставляем как есть: обрезать его посередине хуже,
+ * чем дать чуть вылезти, — а таких слов у нас нет.
+ */
+export function wrapText(ctx, text, maxWidth) {
+    const words = String(text).split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > maxWidth) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = next;
+        }
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
 function drawHud(ctx, world) {
     ctx.save();
     ctx.font = '600 15px "Rajdhani", "DIN Alternate", system-ui, sans-serif';
@@ -928,12 +950,22 @@ function drawHud(ctx, world) {
     ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 38);
 
     if (world.notice) {
-        const alpha = Math.min(1, world.notice.t * 2);
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = Math.min(1, world.notice.t * 2);
         ctx.textAlign = 'center';
         ctx.font = '600 15px "Rajdhani", system-ui, sans-serif';
         ctx.fillStyle = '#ffc857';
-        ctx.fillText(world.notice.text, VIEW.w / 2, VIEW.h - 54);
+        // Подпись держится в центральных 52% ширины и переносится по словам.
+        // Раньше она рисовалась во всю ширину холста, и на любом крупном
+        // плане её срезало по обоим краям — «...аскол» слева, «добивай...»
+        // справа, что читается как брак вёрстки. Это задевало не только
+        // съёмку: то же самое видел бы всякий, кто снимет скриншот.
+        // 52%, а не 60: крупный план для витрины берёт 55% ширины холста,
+        // и подпись на 277 точек при пределе 288 всё равно срезалась бы.
+        // Запас нужен под кадр, а не под сам холст.
+        const lines = wrapText(ctx, world.notice.text, VIEW.w * 0.52);
+        const step = 17;
+        const top = VIEW.h - 54 - (lines.length - 1) * step;
+        lines.forEach((line, i) => ctx.fillText(line, VIEW.w / 2, top + i * step));
         ctx.globalAlpha = 1;
     }
     ctx.restore();
