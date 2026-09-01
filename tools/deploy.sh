@@ -41,6 +41,20 @@ echo "уедет на $SSH_HOST:$SITE_ROOT/$GAME_PATH/"
 echo
 echo "итого $(cd "$STAGE" && find . -type f | wc -l | tr -d ' ') файлов, $(du -sh "$STAGE" | cut -f1)"
 
+# Выкладываем то, что есть в истории, а не то, что лежит в дереве. Иначе
+# «на бою коммит такой-то» — неправда: рядом могли остаться несохранённые
+# правки, и потом никто не восстановит, что именно уехало.
+DIRTY=$(git -C "$HERE" status --porcelain)
+if [ -n "$DIRTY" ]; then
+  echo
+  echo "ОШИБКА: дерево грязное, выкладывать нечего сверять с историей:" >&2
+  echo "$DIRTY" >&2
+  echo "сначала коммит, потом выкладка" >&2
+  exit 1
+fi
+COMMIT=$(git -C "$HERE" rev-parse --short HEAD)
+echo "выкладывается коммит $COMMIT"
+
 if [ "$DEPLOY" != yes ]; then
   echo
   echo "это была проверка. чтобы выложить: sh tools/deploy.sh --deploy"
@@ -97,4 +111,4 @@ done
 [ "$FAIL" = 0 ] || { echo "ОШИБКА: бой не совпал с тем, что уехало" >&2; exit 1; }
 
 echo
-echo "готово: $BASE/"
+echo "готово: $BASE/ — коммит $COMMIT"
