@@ -549,3 +549,31 @@ body.has-touch .frame {
 #pause:hover, #pause:focus-visible { opacity: 1; }
 body.playing #pause { display: flex; }
 body.menu-open #pause { display: none; }
+
+/* Выход на сайт — ссылка, а не кнопка: работает без скрипта и открывается
+   средним щелчком. Но порог в 44 точки на неё не распространялся, и она
+   вышла 27×8 — впятеро ниже. Ровно та болезнь, которой больны все девять
+   соседних игр: у худшей кнопка выхода 54×19. Поэтому размеры здесь заданы
+   явно, а не унаследованы. Общий вид берётся из /game-menu.css. */
+.site-home {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 132px;
+    padding: 0.8em 2em;
+    border: 1px solid rgba(125, 252, 255, 0.35);
+    border-radius: 999px;
+    background: rgba(125, 252, 255, 0.06);
+    color: #cdefff;
+    font: inherit;
+    font-size: 0.95em;
+    letter-spacing: 0.24em;
+    text-decoration: none;
+    text-transform: uppercase;
+    opacity: 1;
+}
+
+.site-home:hover,
+.site-home:focus-visible { background: rgba(125, 252, 255, 0.14); color: #fff; }

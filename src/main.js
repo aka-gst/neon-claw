@@ -113,7 +113,7 @@ function show(name) {
     document.body.classList.toggle('playing', name === 'none');
     // Подтверждение выхода живёт до закрытия меню и не переживает его:
     // взведённая кнопка, забытая на неделю, сработает как обычная.
-    for (const b of overlay.querySelectorAll('button[data-action="home"]')) {
+    for (const b of overlay.querySelectorAll('[data-action="home"]')) {
         delete b.dataset.armed;
         b.textContent = 'НА САЙТ';
     }
@@ -293,7 +293,9 @@ window.addEventListener('keydown', (event) => {
 // Обработчик один на все экраны: кнопки различает только цель. «Дальше»
 // ведёт на следующий уровень, остальные начинают заново.
 overlay.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action]');
+    // Не `button[...]`: выход — настоящая ссылка, чтобы работать и без
+    // скрипта. Подтверждение навешиваем поверх, а не вместо неё.
+    const button = event.target.closest('[data-action]');
     if (!button) return;
     audio.unlock();
     const action = button.dataset.action;
@@ -309,10 +311,13 @@ overlay.addEventListener('click', (event) => {
         // уже теряли прогресс одним касанием, и кнопка выхода стоит рядом с
         // игровым полем, то есть под большим пальцем.
         if (world.elapsed > 0 && !button.dataset.armed) {
+            event.preventDefault();
             button.dataset.armed = '1';
             button.textContent = 'ТОЧНО? ПРОГРЕСС ПРОПАДЁТ';
             return;
         }
+        // Второе касание — уходим. Ссылка увела бы и сама, но на заставке
+        // сюда попадают без подтверждения, и пусть путь будет один.
         location.href = '/';
         return;
     }
