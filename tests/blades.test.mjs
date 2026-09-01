@@ -143,3 +143,91 @@ test('в кадрах замирания от удара клинок всё е�
     stepWorld(world, intent({ bladeIndex: 1 }), STEP);
     assert.equal(p.blade, BLADES.order[1], 'хитстоп проглотил смену клинка');
 });
+
+/**
+ * Всё выше проверяет ПРАВИЛО: `hurtEnforcer` слушается, когда ему подали
+ * верные аргументы. Но множитель и стихию считает мир, а помощник `strike`
+ * повторяет этот расчёт у себя — то есть проверяет собственную заготовку.
+ *
+ * Отрицательный контроль это подтвердил: если убрать из `playerAttacks`
+ * передачу стихии, все 83 теста остаются зелёными, а стихий в игре нет.
+ * Находка пришла от сессии ПЕРЕЛОМА: «если в проверке есть аргумент,
+ * который вы придумали, — спросите, откуда его берёт игра».
+ *
+ * Ниже — та же механика через настоящий ход мира. Здесь не подаётся ни
+ * урон, ни множитель: только нажатия.
+ */
+
+const LIVE = [
+    '..........',
+    '..........',
+    '..........',
+    'p...i.....',
+    '##########',
+    '##########',
+];
+
+/** Держит героя вплотную к стражу и не даёт стражу бить в ответ. */
+const glue = (world, foe) => {
+    const p = world.player;
+    p.body.x = foe.body.x - 22;
+    p.body.y = foe.body.y;
+    p.facing = 1;
+    p.invuln = 99;
+    foe.cooldown = 99;
+};
+
+/**
+ * Один взмах настоящим ходом мира. Ввод — только нажатия.
+ *
+ * Ждём ВОЗВРАТА КЛИНКА В ПОКОЙ, а не сорок шагов: цикл удара 0,34 с, ровно
+ * столько же, сколько сорок один шаг, — и следующее нажатие приходило, пока
+ * меч ещё в возврате, где его молча отбрасывают. Второй взмах не случался
+ * вовсе, а выглядело это как «раскол не работает».
+ */
+const liveSwing = (world, foe, keys = {}) => {
+    glue(world, foe);
+    stepWorld(world, intent({ attackDown: true, ...keys }), STEP);
+    for (let i = 0; i < 200; i += 1) {
+        glue(world, foe);
+        stepWorld(world, intent(), STEP);
+        if (world.player.attack.phase === 'none' && i > 4) return;
+    }
+    throw new Error('клинок так и не вернулся в покой');
+};
+
+test('живой удар: игра сама несёт стихию клинка и кладёт след на стража', () => {
+    const world = createWorld(LIVE);
+    const foe = world.enemies[0];
+    foe.hp = 40;
+    foe.maxHp = 40;
+
+    assert.equal(foe.element, 'frost', 'страж из разметки `i` оказался не льдом');
+    assert.equal(world.player.blade, 'heat', 'герой начинает не с жара');
+
+    const before = foe.hp;
+    liveSwing(world, foe);
+
+    // Жар по льду — противоположность: урон вдвое. Число берём из данных,
+    // а не из теста, но САМ удар нанесла игра.
+    assert.equal(before - foe.hp, BLADES.damage * BLADES.counter,
+        'игра не применила множитель стихии');
+    assert.equal(foe.mark, 'heat', 'игра не оставила след клинка');
+    assert.notEqual(foe.state, 'guard', 'гарда встала на удар противоположностью');
+});
+
+test('живой раскол: сменить клинок кнопкой и ударить — трещит', () => {
+    const world = createWorld(LIVE);
+    const foe = world.enemies[0];
+    foe.hp = 40;
+    foe.maxHp = 40;
+
+    liveSwing(world, foe);
+    world.events.length = 0;
+
+    // Клинок меняем ровно тем же нажатием, что и игрок.
+    liveSwing(world, foe, { swapDown: true });
+    assert.equal(world.player.blade, 'frost', 'нажатие не сменило клинок');
+    assert.ok(world.events.includes('rift'), 'две разные стихии не дали раскола');
+    assert.ok(foe.guardReady > 0, 'раскол не запер гарду');
+});
