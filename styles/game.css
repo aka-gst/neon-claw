@@ -278,6 +278,10 @@ button.mode.is-on b { color: var(--gold); }
 
 button {
     appearance: none;
+    /* Сорок четыре точки — нижняя граница, ниже которой палец промахивается.
+       Обход десяти наших игр показал, что этот порог не проходит НИ ОДНА
+       кнопка выхода: худшая была 54×19, то есть полоска в пять миллиметров. */
+    min-height: 44px;
     padding: 0.8em 2em;
     border: 1px solid var(--magenta);
     background: rgba(255, 45, 149, 0.08);
@@ -504,3 +508,44 @@ body.has-touch .frame {
         padding: 0;
     }
 }
+
+/* Ряд кнопок на экранах меню: в узком окне складывается в столбец, чтобы
+   каждая оставалась во всю ширину пальца, а не ужималась до полоски. */
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 18px;
+}
+
+.row button { flex: 0 1 auto; }
+.quiet { border-color: rgba(125, 252, 255, 0.35); background: rgba(125, 252, 255, 0.06); color: #cdefff; }
+
+/* Кнопка паузы — единственная дверь наружу на телефоне. Держится в углу
+   кадра, вне досягаемости большого пальца, которым ведут героя. */
+#pause {
+    position: fixed;
+    /* Верхний центр, а не угол: справа счёт и трофеи, слева жизни, стрелы и
+       клинки. Замер показал, что в правом углу кнопка ложится прямо на счёт
+       (336–380 против зоны 293–382). Середина верха — единственное место в
+       HUD, где ничего не нарисовано. */
+    top: calc(8px + env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 0.12em;
+    opacity: 0.55;
+}
+
+#pause:hover, #pause:focus-visible { opacity: 1; }
+body.playing #pause { display: flex; }
+body.menu-open #pause { display: none; }

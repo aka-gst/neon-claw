@@ -110,6 +110,13 @@ function show(name) {
     // Кнопки управления и меню не должны существовать одновременно:
     // на телефоне они лежат в одних и тех же местах экрана.
     document.body.classList.toggle('menu-open', name !== 'none');
+    document.body.classList.toggle('playing', name === 'none');
+    // Подтверждение выхода живёт до закрытия меню и не переживает его:
+    // взведённая кнопка, забытая на неделю, сработает как обычная.
+    for (const b of overlay.querySelectorAll('button[data-action="home"]')) {
+        delete b.dataset.armed;
+        b.textContent = 'НА САЙТ';
+    }
     if (name !== 'none') touch?.release();
     if (name === 'won') {
         pulse('level-clear', {
@@ -289,7 +296,28 @@ overlay.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
     audio.unlock();
-    if (button.dataset.action === 'next') {
+    const action = button.dataset.action;
+
+    if (action === 'resume') {
+        show('none');
+        canvas.focus();
+        return;
+    }
+
+    if (action === 'home') {
+        // Партия не начата — выпускаем сразу. Партия идёт — спрашиваем: у нас
+        // уже теряли прогресс одним касанием, и кнопка выхода стоит рядом с
+        // игровым полем, то есть под большим пальцем.
+        if (world.elapsed > 0 && !button.dataset.armed) {
+            button.dataset.armed = '1';
+            button.textContent = 'ТОЧНО? ПРОГРЕСС ПРОПАДЁТ';
+            return;
+        }
+        location.href = '/';
+        return;
+    }
+
+    if (action === 'next') {
         const next = getLevel(levelId).next;
         if (next) levelId = next;
     }
@@ -299,6 +327,12 @@ overlay.addEventListener('click', (event) => {
 
 window.addEventListener('blur', () => {
     touch?.release();
+    if (screen === 'none') show('paused');
+});
+
+// Пауза кнопкой — единственный путь в меню с телефона: клавиш там нет.
+document.getElementById('pause')?.addEventListener('click', () => {
+    audio.unlock();
     if (screen === 'none') show('paused');
 });
 

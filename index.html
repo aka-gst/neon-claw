@@ -47,12 +47,20 @@
             </p>
             <p class="hint" id="best"></p>
 
-            <button type="button" data-action="start">НА КРЫШИ</button>
+            <div class="row">
+                <button type="button" data-action="start">НА КРЫШИ</button>
+                <button type="button" data-action="home" class="quiet">НА САЙТ</button>
+            </div>
         </section>
 
         <section data-screen="paused">
             <h2>ПАУЗА</h2>
             <p class="lead">Esc — обратно, R — сначала.</p>
+            <div class="row">
+                <button type="button" data-action="resume">ПРОДОЛЖИТЬ</button>
+                <button type="button" data-action="start">СНАЧАЛА</button>
+                <button type="button" data-action="home">НА САЙТ</button>
+            </div>
         </section>
 
         <section data-screen="won">
@@ -82,6 +90,15 @@
   обрезались бы её краем — измеримые, видимые по стилям и невидимые
   на экране.
 -->
+<!--
+  Пауза — единственная дверь наружу на телефоне: клавиш там нет, а жест
+  «назад» в полноэкранной вкладке не работает. Кнопка лежит над полем, и это
+  сознательно: сама по себе она ничего не обрывает, а выход за ней спрашивает
+  подтверждение. Обрывающую кнопку над полем вешать нельзя — так уже теряли
+  партию замахом пальца в угол.
+-->
+<button type="button" id="pause" aria-label="пауза">II</button>
+
 <div id="touch" hidden aria-hidden="true">
     <div class="tpad" data-touch="pad"><span>вести пальцем · чуть-чуть — красться</span></div>
     <div class="tacts">
