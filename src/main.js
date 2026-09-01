@@ -8,7 +8,7 @@
 
 import { STEP, VIEW, fitView, BLADES, LOOP } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
-import { createCamera, updateCamera } from './camera.js';
+import { createCamera, updateCamera, snapCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createTouch, hasTouch } from './touch.js';
@@ -387,6 +387,11 @@ window.NEON = {
     restart,
     show,
     paintSwapButton,
+    /**
+     * Поставить камеру на героя мгновенно — для съёмки и замеров, где
+     * герой оказывается на месте присваиванием, а не приходит своим ходом.
+     */
+    snapCamera() { return snapCamera(camera, world); },
     /** Замереть: мир двигается только через advance. */
     hold() { driven = true; return driven; },
     /** Вернуть ход собственному циклу игры. */
