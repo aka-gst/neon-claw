@@ -192,6 +192,17 @@ function paintSwapButton(world) {
     swapButton.classList.toggle('is-frost', held.id === 'frost');
 }
 
+/**
+ * Когда мир двигают снаружи (отладочный пульт, съёмка сцены), собственный
+ * цикл обязан замолчать. Иначе время идёт ДВАЖДЫ: и от кадров, и от вызова,
+ * и расстановка, сделанная шагом раньше, к моменту удара уже неверна.
+ *
+ * Я этого не видел месяц потому, что моя панель предпросмотра скрыта и кадров
+ * в ней нет вовсе. У соседа с настоящим окном на тридцати кадрах сценарий
+ * считал, что прошло 0,05 с, а мир проживал 0,185 — втрое больше.
+ */
+let driven = false;
+
 function frame(now) {
     const elapsed = Math.min(LOOP.maxElapsed, (now - last) / 1000);
     last = now;
@@ -214,7 +225,7 @@ function frame(now) {
     }
 
     if (screen === 'none') {
-        accumulator += elapsed;
+        accumulator += driven ? 0 : elapsed;
         let steps = 0;
         while (accumulator >= STEP && steps < LOOP.maxSteps) {
             stepWorld(world, readIntent(input, touch, pointer), STEP);
@@ -376,6 +387,11 @@ window.NEON = {
     restart,
     show,
     paintSwapButton,
+    /** Замереть: мир двигается только через advance. */
+    hold() { driven = true; return driven; },
+    /** Вернуть ход собственному циклу игры. */
+    release() { driven = false; accumulator = 0; return driven; },
+    get driven() { return driven; },
     /**
      * Начать партию так же, как её начинает игрок кнопкой «НА КРЫШИ».
      * Отдельное имя нужно потому, что `show` только переключает экраны и
@@ -392,6 +408,9 @@ window.NEON = {
      * а сам себя.
      */
     advance(keys = {}, seconds = 1) {
+        // Первый же вызов забирает время себе: дальше мир движется только
+        // отсюда, кадры лишь рисуют. Вернуть ход обратно — NEON.release().
+        driven = true;
         const steps = Math.max(1, Math.round(seconds / STEP));
         for (let i = 0; i < steps; i += 1) {
             stepWorld(world, {

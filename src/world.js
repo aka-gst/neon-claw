@@ -471,9 +471,22 @@ export function stepWorld(world, intent, dt) {
     takeCheckpoint(world);
     respawnIfFallen(world);
 
+    // Безопасной считается не всякая земля под ногами, а только та, под
+    // которой есть запас с ОБЕИХ сторон. Иначе точкой возврата становится
+    // самый край ямы — и падение роняет обратно в неё же.
+    //
+    // Замерено: край первой ямы приходится на 14,3 тайла при дыре 14–16.
+    // Возврат ставил игрока ровно туда, он падал снова, и пять жизней
+    // сгорали за 1,6 секунды — без единого врага в двухстах пикселях.
+    // Слепой прогон это видел, а я нет: я всегда ставил героя руками.
     if (p.body.onGround && p.state === 'move' && p.hp > 0) {
-        world.lastSafe.x = p.body.x;
-        world.lastSafe.y = p.body.y;
+        const край = TILE * 0.6;
+        const подНогами = p.body.y + 2;
+        if (solidAtPoint(world.level, p.body.x - край, подНогами)
+            && solidAtPoint(world.level, p.body.x + край, подНогами)) {
+            world.lastSafe.x = p.body.x;
+            world.lastSafe.y = p.body.y;
+        }
     }
 
     if (p.hp <= 0) {
