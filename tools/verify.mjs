@@ -34,7 +34,8 @@ const WATCH = [
     'index.html',
     'src/main.js', 'src/world.js', 'src/enemy.js', 'src/player.js',
     'src/tuning.js', 'src/combat.js', 'src/render.js', 'src/input.js',
-    'src/level.js', 'src/levels.js', 'styles/game.css',
+    'src/camera.js', 'src/showcase.js', 'src/level.js', 'src/levels.js',
+    'styles/game.css',
 ];
 
 /** Наружу этого быть не должно. Проверяем прицельно, а не «ну наверное». */
@@ -81,7 +82,9 @@ for (const rel of WATCH) {
     }
     const a = sha(mine);
     const b = sha(live.body);
-    if (!a || !b || live.body.length === 0) {
+    // Хеш пустого буфера сам по себе непустой. Поэтому проверяем именно
+    // измеряемые данные: иначе «пустое равно пустому» станет ложным успехом.
+    if (mine.length === 0 || live.body.length === 0) {
         rows.push([rel, '200', 'ПУСТО — проверка не отработала']);
         плохо += 1;
     } else if (a === b) {

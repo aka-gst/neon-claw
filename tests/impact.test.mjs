@@ -40,6 +40,7 @@ const swing = (world, gap) => {
         stepWorld(world, intent(), STEP);
     }
     return {
+        world,
         events: [...world.events],
         sparks: [...world.sparks],
         rings: [...world.rings],
@@ -130,4 +131,31 @@ test('замирание на попадании держит порог — и�
 
     const miss = swing(createWorld(ARENA), 6 * TILE);
     assert.equal(miss.hitstop, 0, 'промах тоже замирает — контраста нет');
+});
+
+test('попадание останавливает бой на 85 мс', () => {
+    const hit = swing(createWorld(ARENA), 14);
+    assert.equal(hit.hitstop, 0.085,
+        `после попадания стоп-кадр ${hit.hitstop.toFixed(3)} с вместо 0.085 с`);
+});
+
+test('эффекты попадания стоят вместе с бойцом во время стоп-кадра', () => {
+    const hit = swing(createWorld(ARENA), 14);
+    const world = hit.world;
+    const before = {
+        shake: world.shake,
+        sparks: world.sparks.map(({ x, y, vx, vy, life }) => ({ x, y, vx, vy, life })),
+        rings: world.rings.map(({ r, life }) => ({ r, life })),
+    };
+
+    // Шесть шагов — 50 мс. На старом 60-мс стопе боец ещё стоит,
+    // поэтому сдвиг эффектов здесь означал именно разрыв отклика.
+    for (let i = 0; i < 6; i += 1) stepWorld(world, intent(), STEP);
+
+    assert.ok(world.player.hitstop > 0, 'сам стоп-кадр кончился раньше эффектов');
+    assert.deepEqual({
+        shake: world.shake,
+        sparks: world.sparks.map(({ x, y, vx, vy, life }) => ({ x, y, vx, vy, life })),
+        rings: world.rings.map(({ r, life }) => ({ r, life })),
+    }, before, 'искры, кольцо или тряска продолжили жить под стоп-кадром');
 });

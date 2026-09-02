@@ -403,28 +403,35 @@ function reachedExit(world) {
 
 export function stepWorld(world, intent, dt) {
     world.time += dt;
-    world.shake *= 1 - Math.min(1, CAMERA.shakeDecay * dt);
-    if (world.shake < 0.05) world.shake = 0;
+    // Попадание останавливает бой, а не только тела. Если искры, кольцо и
+    // тряска продолжают жить, момент удара распадается на движущийся фон и
+    // неподвижных бойцов — глазу нечего схватить.
+    const impactPaused = world.player.hitstop > 0;
+    if (!impactPaused) {
+        world.shake *= 1 - Math.min(1, CAMERA.shakeDecay * dt);
+        if (world.shake < 0.05) world.shake = 0;
+    }
     if (world.notice) {
         world.notice.t -= dt;
         if (world.notice.t <= 0) world.notice = null;
     }
 
-    for (const s of world.sparks) {
-        s.life -= dt;
-        s.x += s.vx * dt;
-        s.y += s.vy * dt;
-        s.vy += 520 * dt;
-        s.vx *= 0.94;
-    }
-    if (world.sparks.length > 260) world.sparks.splice(0, world.sparks.length - 260);
-    world.sparks = world.sparks.filter((s) => s.life > 0);
+    if (!impactPaused) {
+        for (const s of world.sparks) {
+            s.life -= dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.vx *= 0.94;
+        }
+        if (world.sparks.length > 260) world.sparks.splice(0, world.sparks.length - 260);
+        world.sparks = world.sparks.filter((s) => s.life > 0);
 
-    for (const r of world.rings) {
-        r.life -= dt;
-        r.r += r.grow * dt;
+        for (const r of world.rings) {
+            r.life -= dt;
+            r.r += r.grow * dt;
+        }
+        world.rings = world.rings.filter((r) => r.life > 0);
     }
-    world.rings = world.rings.filter((r) => r.life > 0);
 
     for (const item of world.loot) item.bob += dt;
 

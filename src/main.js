@@ -17,6 +17,7 @@ import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
 import { pulse } from './pulse.js';
+import { sceneFromSearch, stageImpact } from './showcase.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -167,6 +168,23 @@ function restart() {
     world = createWorld(getLevel(levelId).rows);
     camera = createCamera(world);
     show('none');
+}
+
+/**
+ * Съёмочная сцена включается только явным адресом, не трогая обычный старт
+ * и не создавая в статистике ложную «начатую партию».
+ */
+function startShowcase() {
+    if (sceneFromSearch(location.search) !== 'impact') return false;
+    const scene = stageImpact(world, (sceneIntent) => stepWorld(world, sceneIntent, STEP));
+    snapCamera(camera, world);
+    // Кадры браузера не должны увести мир дальше от пойманного попадания.
+    driven = true;
+    // Сцена открывается без пользовательского жеста: звук здесь не нужен,
+    // а очередь событий иначе ждала бы первого случайного касания.
+    world.events.length = 0;
+    show('none');
+    return scene;
 }
 
 function drainSound() {
@@ -453,7 +471,7 @@ window.NEON = {
  */
 try {
     paintResults();
-    show('title');
+    if (!startShowcase()) show('title');
     requestAnimationFrame(frame);
 
 } catch (error) {
