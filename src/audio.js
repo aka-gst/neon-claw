@@ -101,6 +101,18 @@ const VOICES = {
         tone({ from: 180, to: 60, dur: 0.14, type: 'square', gain: 0.26 });
         hiss({ dur: 0.1, gain: 0.18, freq: 1400, q: 0.8 });
     },
+    // Промах звучит пусто: один воздух, ниже и глуше замаха, без металла.
+    // Три исхода различаются на слух так же, как на глаз: удар — глухой
+    // низ, звон — резкий металл, промах — уходящий шелест.
+    whiff: () => hiss({ dur: 0.16, gain: 0.07, freq: 900, q: 0.6 }),
+    // Раскол: металл рвётся, а не звенит. Вниз, широко и с треском.
+    rift: () => {
+        tone({ from: 900, to: 90, dur: 0.4, type: 'sawtooth', gain: 0.26 });
+        tone({ from: 1500, to: 260, dur: 0.3, type: 'square', gain: 0.14, delay: 0.02 });
+        hiss({ dur: 0.36, gain: 0.2, freq: 2600, q: 0.7 });
+    },
+    // Смена клинка — короткий щелчок, чтобы рука знала: услышано.
+    swap: () => tone({ from: 1200, to: 1750, dur: 0.06, type: 'triangle', gain: 0.1 }),
     // Звон должен раздражать ровно настолько, чтобы в следующий раз выждать.
     clang: () => {
         tone({ from: 1750, to: 1500, dur: 0.22, type: 'square', gain: 0.13 });
@@ -136,6 +148,9 @@ export function createAudio() {
     let muted = false;
     return {
         unlock: ensure,
+        /** Состояние звукового движка — для проверки на живом адресе. */
+        get state() { return ctx ? ctx.state : 'нет контекста'; },
+        get voices() { return Object.keys(VOICES); },
         get muted() { return muted; },
         toggle() {
             muted = !muted;

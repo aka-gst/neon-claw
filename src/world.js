@@ -6,14 +6,14 @@
  * в «Битве Стихий» — событие сначала данные, и только потом картинка.
  */
 
-import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, BOW } from './tuning.js';
+import { TILE, SWORD, ENFORCER, LOOT, PLAYER, CAMERA, BOW, BLADES } from './tuning.js';
 import { parseLevel, levelPixelHeight, solidAtPoint } from './level.js';
 import { overlaps, bodyRect, moveX } from './physics.js';
 import { createPlayer, updatePlayer, attackRect, isAttacking, hurtPlayer, pushPlayer } from './player.js';
 import {
     createEnforcer, updateEnforcer, enforcerAttackRect, isSwinging, hurtEnforcer, reviveEnforcer,
 } from './enemy.js';
-import { RULES } from './combat.js';
+import { RULES, elementFactor } from './combat.js';
 
 export function createWorld(rows) {
     const level = parseLevel(rows);
@@ -26,6 +26,8 @@ export function createWorld(rows) {
         enemies: level.enemies.map((e, i) => createEnforcer(e, i, RULES.enemy)),
         loot: level.loot.map((l, i) => ({ ...l, id: i, taken: false, bob: i * 0.7, vx: 0, vy: 0 })),
         sparks: [],
+        rings: [],
+        wasSwinging: false,
         /** Стрелы в полёте и воткнувшиеся — вторые подбираются обратно. */
         arrows: [],
         stuck: [],
@@ -52,19 +54,40 @@ export function createWorld(rows) {
     };
 }
 
-function spark(world, x, y, count, color, spread = 120, life = 0.35) {
+function spark(world, x, y, count, color, spread = 120, life = 0.35, aim = null) {
     for (let i = 0; i < count; i += 1) {
-        const a = (i / count) * Math.PI * 2 + world.time * 3;
+        // Кругом — для смерти и подбора. Конусом — для удара: тогда сами
+        // искры досказывают исход. Ушли сквозь врага — попал; брызнули
+        // назад в лицо — держит гарду. Это читается без единого слова.
+        const a = aim
+            ? aim.dir + (((i * 2 + 1) / (count * 2)) * 2 - 1) * aim.cone
+            : (i / count) * Math.PI * 2 + world.time * 3;
         const s = spread * (0.4 + ((i * 37) % 10) / 10);
         world.sparks.push({
             x, y,
             vx: Math.cos(a) * s,
-            vy: Math.sin(a) * s - 40,
+            vy: Math.sin(a) * s - (aim ? 0 : 40),
             life,
             max: life,
             color,
         });
     }
+}
+
+// Кольцо — вспышка в точке касания. У попадания она полная и быстрая,
+// у звона — узкая дуга, повёрнутая обратно к игроку.
+function ring(world, x, y, o) {
+    world.rings.push({
+        x, y,
+        r: o.r0 ?? 3,
+        grow: o.grow ?? 120,
+        life: o.life ?? 0.18,
+        max: o.life ?? 0.18,
+        color: o.color,
+        dir: o.dir ?? 0,
+        arc: o.arc ?? Math.PI * 2,
+        width: o.width ?? 2,
+    });
 }
 
 function say(world, text, seconds = 2.4) {
@@ -73,7 +96,23 @@ function say(world, text, seconds = 2.4) {
 
 function playerAttacks(world) {
     const p = world.player;
-    if (!isAttacking(p)) return;
+    const active = isAttacking(p);
+
+    // Промах — тоже ответ, и он обязан читаться. Ловим конец активного
+    // окна: если за весь взмах никого не задели, клинок расписывается по
+    // пустому воздуху. Ни стопа, ни тряски — и эта тишина сама говорит
+    // «мимо» громче любой надписи.
+    if (world.wasSwinging && !active && p.attack.hits.size === 0) {
+        const dir = p.facing >= 0 ? 0 : Math.PI;
+        ring(world, p.body.x + p.facing * SWORD.reach * 0.8, p.body.y - p.body.h * 0.55, {
+            color: '#4a6a86', r0: SWORD.reach * 0.55, grow: 34,
+            life: 0.16, dir, arc: 1.5, width: 1.4,
+        });
+        world.events.push('whiff');
+    }
+    world.wasSwinging = active;
+
+    if (!active) return;
     const blade = attackRect(p);
 
     for (const e of world.enemies) {
@@ -81,16 +120,29 @@ function playerAttacks(world) {
         if (!overlaps(blade, bodyRect(e.body))) continue;
 
         p.attack.hits.add(e.id);
+        // Множитель стихии решает и урон, и судьбу гарды — оба разом.
+        const factor = elementFactor(p.blade, e.element);
         const result = hurtEnforcer(e, p.body.x, {
             parry: RULES.enemy.parry,
             guard: RULES.enemy.guard,
+            element: p.blade,
+            damage: BLADES.damage * factor,
+            factor,
         });
         const mid = { x: (blade.x + blade.w / 2 + e.body.x) / 2, y: e.body.y - e.body.h / 2 };
 
+        const dir = Math.sign(e.body.x - p.body.x) >= 0 ? 0 : Math.PI;
+
         if (result === 'blocked') {
             // Звон — это отказ, и он должен ощущаться отказом: отдача,
-            // потерянный темп и ни единицы урона.
-            spark(world, mid.x, mid.y, 12, '#9ad8ff', 200, 0.3);
+            // потерянный темп и ни единицы урона. Искры брызжут НАЗАД, в
+            // игрока, узким веером, и вспыхивает гарда, а не тело врага.
+            // Так удар и звон отличаются направлением, а не оттенком.
+            spark(world, mid.x, mid.y, 10, '#9ad8ff', 230, 0.28, { dir: dir + Math.PI, cone: 0.5 });
+            ring(world, mid.x, mid.y, {
+                color: '#cfeaff', r0: 5, grow: 55, life: 0.2,
+                dir: dir + Math.PI, arc: 1.7, width: 3,
+            });
             world.events.push('clang');
             pushPlayer(p, e.body.x, ENFORCER.clangKnockback);
             p.hitstop = SWORD.hitstop;
@@ -99,8 +151,26 @@ function playerAttacks(world) {
             // тает — значит, есть момент; стрела гарду не замечает вовсе.
             say(world, 'Гарда. Дуга тает — выжди её. Или пробей стрелой.', 2.4);
         } else {
-            spark(world, mid.x, mid.y, 14, '#ff2d95', 260, 0.34);
-            world.events.push(result === 'dead' ? 'kill' : 'hit');
+            if (e.lastRift) {
+                // Раскол — третий, ни на что не похожий отклик: полный
+                // круг вместо конуса и два расходящихся кольца. Ни цвет,
+                // ни число урона тут ни при чём — другая форма, и её
+                // видно боковым зрением, не разглядывая.
+                spark(world, mid.x, mid.y, 20, '#ffffff', 340, 0.4);
+                ring(world, mid.x, mid.y, { color: '#ffffff', r0: 2, grow: 210, life: 0.2, width: 3 });
+                ring(world, mid.x, mid.y, { color: BLADES.heat.tint, r0: 8, grow: 120, life: 0.34, width: 2 });
+                p.hitstop = SWORD.hitstop * 2;
+                world.shake = Math.max(world.shake, 9);
+                say(world, 'Раскол! Гарда не встанет.', 1.8);
+            }
+            // Попадание уходит СКВОЗЬ врага: широкий веер по ходу клинка
+            // плюс короткая полная вспышка в точке касания.
+            spark(world, mid.x, mid.y, 16, '#ff2d95', 300, 0.3, { dir, cone: 0.95 });
+            ring(world, mid.x, mid.y, { color: '#ffffff', r0: 3, grow: 165, life: 0.13, width: 2.4 });
+            // Раскол ЗАМЕНЯЕТ голос попадания, а не звучит поверх него:
+            // два звука разом сливаются в кашу и стоят ровно той ясности,
+            // ради которой всё это делалось.
+            world.events.push(result === 'dead' ? 'kill' : (e.lastRift ? 'rift' : 'hit'));
             p.hitstop = SWORD.hitstop;
             world.shake = Math.max(world.shake, result === 'dead' ? 7 : 4);
             if (!p.body.onGround) p.body.vy = Math.min(p.body.vy, -SWORD.airLift);
@@ -210,7 +280,7 @@ function stepArrows(world, dt) {
                 if (!overlaps({ x: a.x - 2, y: a.y - 2, w: 4, h: 4 }, bodyRect(e.body))) continue;
 
                 // Стрела проходит сквозь гарду — в этом её смысл против меча.
-                const result = hurtEnforcer(e, a.x, { guard: 'none', pierce: true });
+                const result = hurtEnforcer(e, a.x, { guard: 'none', pierce: true, damage: BOW.damage });
                 spark(world, a.x, a.y, 10, '#ff2d95', 200, 0.35);
                 world.events.push('hit');
                 if (result === 'dead') world.score += 100;
@@ -333,22 +403,35 @@ function reachedExit(world) {
 
 export function stepWorld(world, intent, dt) {
     world.time += dt;
-    world.shake *= 1 - Math.min(1, CAMERA.shakeDecay * dt);
-    if (world.shake < 0.05) world.shake = 0;
+    // Попадание останавливает бой, а не только тела. Если искры, кольцо и
+    // тряска продолжают жить, момент удара распадается на движущийся фон и
+    // неподвижных бойцов — глазу нечего схватить.
+    const impactPaused = world.player.hitstop > 0;
+    if (!impactPaused) {
+        world.shake *= 1 - Math.min(1, CAMERA.shakeDecay * dt);
+        if (world.shake < 0.05) world.shake = 0;
+    }
     if (world.notice) {
         world.notice.t -= dt;
         if (world.notice.t <= 0) world.notice = null;
     }
 
-    for (const s of world.sparks) {
-        s.life -= dt;
-        s.x += s.vx * dt;
-        s.y += s.vy * dt;
-        s.vy += 520 * dt;
-        s.vx *= 0.94;
+    if (!impactPaused) {
+        for (const s of world.sparks) {
+            s.life -= dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.vx *= 0.94;
+        }
+        if (world.sparks.length > 260) world.sparks.splice(0, world.sparks.length - 260);
+        world.sparks = world.sparks.filter((s) => s.life > 0);
+
+        for (const r of world.rings) {
+            r.life -= dt;
+            r.r += r.grow * dt;
+        }
+        world.rings = world.rings.filter((r) => r.life > 0);
     }
-    if (world.sparks.length > 260) world.sparks.splice(0, world.sparks.length - 260);
-    world.sparks = world.sparks.filter((s) => s.life > 0);
 
     for (const item of world.loot) item.bob += dt;
 
@@ -395,9 +478,22 @@ export function stepWorld(world, intent, dt) {
     takeCheckpoint(world);
     respawnIfFallen(world);
 
+    // Безопасной считается не всякая земля под ногами, а только та, под
+    // которой есть запас с ОБЕИХ сторон. Иначе точкой возврата становится
+    // самый край ямы — и падение роняет обратно в неё же.
+    //
+    // Замерено: край первой ямы приходится на 14,3 тайла при дыре 14–16.
+    // Возврат ставил игрока ровно туда, он падал снова, и пять жизней
+    // сгорали за 1,6 секунды — без единого врага в двухстах пикселях.
+    // Слепой прогон это видел, а я нет: я всегда ставил героя руками.
     if (p.body.onGround && p.state === 'move' && p.hp > 0) {
-        world.lastSafe.x = p.body.x;
-        world.lastSafe.y = p.body.y;
+        const край = TILE * 0.6;
+        const подНогами = p.body.y + 2;
+        if (solidAtPoint(world.level, p.body.x - край, подНогами)
+            && solidAtPoint(world.level, p.body.x + край, подНогами)) {
+            world.lastSafe.x = p.body.x;
+            world.lastSafe.y = p.body.y;
+        }
     }
 
     if (p.hp <= 0) {

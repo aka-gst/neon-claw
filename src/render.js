@@ -11,7 +11,7 @@
  * а точное попадание — здесь всё и должно быть светящимся контуром.
  */
 
-import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW } from './tuning.js';
+import { TILE, VIEW, SWORD, ENFORCER, LEDGE, BOW, BLADES } from './tuning.js';
 import { SOLID, ONEWAY, tileAt, levelPixelHeight } from './level.js';
 import { attackRect } from './player.js';
 import { enforcerAttackRect, isAware } from './enemy.js';
@@ -146,6 +146,25 @@ function polygon(ctx, points) {
     ctx.moveTo(points[0][0], points[0][1]);
     for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i][0], points[i][1]);
     ctx.closePath();
+}
+
+/**
+ * Знак стихии — правильный многоугольник. Стихии различаются ЧИСЛОМ СТОРОН,
+ * а не оттенком: треугольник — жар, ромб — лёд. Палитра в игре уже занята
+ * смыслами (голубой — по чему ходить, золотой — что брать, красный — что
+ * убивает), и вешать на неё ещё один смысл значило бы сломать все прежние.
+ * Форма же читается и боковым зрением, и на телефоне, и дальтоником.
+ */
+function elementMark(ctx, x, y, r, sides, color, width) {
+    const pts = [];
+    for (let i = 0; i < sides; i += 1) {
+        const a = -Math.PI / 2 + (i / sides) * Math.PI * 2;
+        pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r]);
+    }
+    polygon(ctx, pts);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
 }
 
 /**
@@ -388,7 +407,18 @@ function drawHero(ctx, p, glowPass, time) {
         ctx.stroke();
         const trail = p.attack.phase === 'active' ? -2.1 : null;
         const rest = sliding ? 2.6 : dashing ? 2.9 : angle;
-        drawBlade(ctx, hand, p.attack.phase === 'none' ? rest : angle, 22, HERO.blade, lw(2.2), trail);
+        const held = BLADES[p.blade];
+        const swung = p.attack.phase === 'none' ? rest : angle;
+        drawBlade(ctx, hand, swung, 22, HERO.blade, lw(2.2), trail);
+        // Знак стихии сидит на самой рукояти: клинок в руке всегда в кадре,
+        // и смотреть на угол экрана посреди связки некогда.
+        if (held) {
+            const flash = p.bladeFlash > 0 ? 1 : 0.75;
+            ctx.globalAlpha = flash;
+            elementMark(ctx, hand[0] + Math.cos(swung) * 5, hand[1] + Math.sin(swung) * 5,
+                3.2 + (p.bladeFlash > 0 ? p.bladeFlash * 8 : 0), held.sides, held.tint, lw(1.5));
+            ctx.globalAlpha = 1;
+        }
     }
 
     ctx.restore();
@@ -487,6 +517,21 @@ function drawEnforcer(ctx, e, glowPass, time) {
         ctx.lineWidth = lw(2);
         ctx.stroke();
         drawBlade(ctx, [5.5, shoulder + 4], angle, 22, color, lw(2.4), swinging ? -2.2 : null);
+    }
+
+    /* стихия стража — у него на груди, там же, где её ищет глаз */
+    const el = BLADES[e.element];
+    if (el && !dying) {
+        elementMark(ctx, 0, -19, 4.2, el.sides, el.tint, lw(1.6));
+    }
+
+    /* след чужой стихии: пока он горит, второй клинок даст раскол */
+    if (e.markT > 0 && e.mark && !dying) {
+        const mark = BLADES[e.mark];
+        const k = Math.min(1, e.markT / 0.6);
+        ctx.globalAlpha = k * (0.55 + 0.45 * Math.abs(Math.sin(time * 6)));
+        elementMark(ctx, 0, -19, 9.5, mark.sides, mark.tint, lw(1.8));
+        ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -787,6 +832,16 @@ function drawArrows(ctx, world, glowPass) {
 function drawSparks(ctx, world, glowPass) {
     const lw = (w) => (glowPass ? w * HALO : w);
     ctx.lineCap = 'round';
+    for (const r of world.rings) {
+        const k = r.life / r.max;
+        ctx.globalAlpha = k * k;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, r.dir - r.arc / 2, r.dir + r.arc / 2);
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = lw(r.width * (0.4 + k));
+        ctx.stroke();
+    }
+
     for (const s of world.sparks) {
         const k = s.life / s.max;
         ctx.globalAlpha = k;
@@ -822,6 +877,28 @@ function paintWorld(ctx, world, cam, glowPass, tiles) {
     drawSparks(ctx, world, glowPass);
 }
 
+/**
+ * Разбивка подписи по словам под заданную ширину. Длинное слово, которое
+ * не влезает целиком, оставляем как есть: обрезать его посередине хуже,
+ * чем дать чуть вылезти, — а таких слов у нас нет.
+ */
+export function wrapText(ctx, text, maxWidth) {
+    const words = String(text).split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > maxWidth) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = next;
+        }
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
 function drawHud(ctx, world) {
     ctx.save();
     ctx.font = '600 15px "Rajdhani", "DIN Alternate", system-ui, sans-serif';
@@ -851,6 +928,16 @@ function drawHud(ctx, world) {
         ctx.stroke();
     }
 
+    // Оба клинка в углу, взятый — ярко. Показывать надо ОБА: иначе игрок
+    // не узнает, что у него вообще есть выбор, пока не нажмёт наугад.
+    for (let i = 0; i < BLADES.order.length; i += 1) {
+        const b = BLADES[BLADES.order[i]];
+        const on = p.blade === b.id;
+        ctx.globalAlpha = on ? 1 : 0.3;
+        elementMark(ctx, 26 + i * 20, 72, on ? 7 : 5.5, b.sides, b.tint, on ? 2.4 : 1.6);
+    }
+    ctx.globalAlpha = 1;
+
     ctx.fillStyle = '#7dfcff';
     ctx.textAlign = 'right';
     ctx.fillText(String(world.score).padStart(5, '0'), VIEW.w - 22, 18);
@@ -863,12 +950,22 @@ function drawHud(ctx, world) {
     ctx.fillText(`ПОПЫТКА ${world.attempts} · ${formatTime(world.elapsed)}`, 22, 38);
 
     if (world.notice) {
-        const alpha = Math.min(1, world.notice.t * 2);
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = Math.min(1, world.notice.t * 2);
         ctx.textAlign = 'center';
         ctx.font = '600 15px "Rajdhani", system-ui, sans-serif';
         ctx.fillStyle = '#ffc857';
-        ctx.fillText(world.notice.text, VIEW.w / 2, VIEW.h - 54);
+        // Подпись держится в центральных 52% ширины и переносится по словам.
+        // Раньше она рисовалась во всю ширину холста, и на любом крупном
+        // плане её срезало по обоим краям — «...аскол» слева, «добивай...»
+        // справа, что читается как брак вёрстки. Это задевало не только
+        // съёмку: то же самое видел бы всякий, кто снимет скриншот.
+        // 52%, а не 60: крупный план для витрины берёт 55% ширины холста,
+        // и подпись на 277 точек при пределе 288 всё равно срезалась бы.
+        // Запас нужен под кадр, а не под сам холст.
+        const lines = wrapText(ctx, world.notice.text, VIEW.w * 0.52);
+        const step = 17;
+        const top = VIEW.h - 54 - (lines.length - 1) * step;
+        lines.forEach((line, i) => ctx.fillText(line, VIEW.w / 2, top + i * step));
         ctx.globalAlpha = 1;
     }
     ctx.restore();

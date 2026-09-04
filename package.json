@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node tools/serve.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node tools/check-assets.mjs ."
+    "check": "node tools/check-assets.mjs .",
+    "verify": "node tools/verify.mjs"
   },
   "description": "NEON CLAW — неоновый платформер про кибер-пирата: сабля, зацеп за карниз и корсары, которые умеют блокировать"
 }

@@ -278,6 +278,10 @@ button.mode.is-on b { color: var(--gold); }
 
 button {
     appearance: none;
+    /* Сорок четыре точки — нижняя граница, ниже которой палец промахивается.
+       Обход десяти наших игр показал, что этот порог не проходит НИ ОДНА
+       кнопка выхода: худшая была 54×19, то есть полоска в пять миллиметров. */
+    min-height: 44px;
     padding: 0.8em 2em;
     border: 1px solid var(--magenta);
     background: rgba(255, 45, 149, 0.08);
@@ -373,7 +377,7 @@ body.has-touch .frame {
     flex: 1 1 45%;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: 'dash jump' 'attack jump' 'bow jump';
+    grid-template-areas: 'dash jump' 'attack jump' 'bow jump' 'swap jump';
     gap: 6px;
     padding: 6px;
 }
@@ -381,6 +385,8 @@ body.has-touch .frame {
 .tbtn[data-touch='dash'] { grid-area: dash; }
 .tbtn[data-touch='attack'] { grid-area: attack; }
 .tbtn[data-touch='bow'] { grid-area: bow; border-color: rgba(77, 255, 184, 0.42); }
+.tbtn[data-touch='swap'] { grid-area: swap; border-color: rgba(255, 138, 61, 0.42); }
+.tbtn[data-touch='swap'].is-frost { border-color: rgba(127, 232, 255, 0.5); }
 .tbtn.tbig { grid-area: jump; border-color: rgba(255, 45, 149, 0.42); }
 
 .tbtn.is-down,
@@ -426,7 +432,10 @@ body.has-touch .frame {
         flex: 1 1 48%;
         grid-template-columns: 1fr 1fr;
         grid-template-rows: 1fr 1fr 1.1fr;
-        grid-template-areas: 'dash attack' 'bow bow' 'jump jump';
+        /* Смена клинка встала рядом с луком, а не отдельным рядом: высота
+           слоя рассчитана под большой палец, и отнимать её у прыжка —
+           самой частой кнопки — было бы хуже, чем сузить лук. */
+        grid-template-areas: 'dash attack' 'bow swap' 'jump jump';
         padding: 0;
     }
 
@@ -499,3 +508,72 @@ body.has-touch .frame {
         padding: 0;
     }
 }
+
+/* Ряд кнопок на экранах меню: в узком окне складывается в столбец, чтобы
+   каждая оставалась во всю ширину пальца, а не ужималась до полоски. */
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 18px;
+}
+
+.row button { flex: 0 1 auto; }
+.quiet { border-color: rgba(125, 252, 255, 0.35); background: rgba(125, 252, 255, 0.06); color: #cdefff; }
+
+/* Кнопка паузы — единственная дверь наружу на телефоне. Держится в углу
+   кадра, вне досягаемости большого пальца, которым ведут героя. */
+#pause {
+    position: fixed;
+    /* Верхний центр, а не угол: справа счёт и трофеи, слева жизни, стрелы и
+       клинки. Замер показал, что в правом углу кнопка ложится прямо на счёт
+       (336–380 против зоны 293–382). Середина верха — единственное место в
+       HUD, где ничего не нарисовано. */
+    top: calc(8px + env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 0.12em;
+    opacity: 0.55;
+}
+
+#pause:hover, #pause:focus-visible { opacity: 1; }
+body.playing #pause { display: flex; }
+body.menu-open #pause { display: none; }
+
+/* Выход на сайт — ссылка, а не кнопка: работает без скрипта и открывается
+   средним щелчком. Но порог в 44 точки на неё не распространялся, и она
+   вышла 27×8 — впятеро ниже. Ровно та болезнь, которой больны все девять
+   соседних игр: у худшей кнопка выхода 54×19. Поэтому размеры здесь заданы
+   явно, а не унаследованы. Общий вид берётся из /game-menu.css. */
+.site-home {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 132px;
+    padding: 0.8em 2em;
+    border: 1px solid rgba(125, 252, 255, 0.35);
+    border-radius: 999px;
+    background: rgba(125, 252, 255, 0.06);
+    color: #cdefff;
+    font: inherit;
+    font-size: 0.95em;
+    letter-spacing: 0.24em;
+    text-decoration: none;
+    text-transform: uppercase;
+    opacity: 1;
+}
+
+.site-home:hover,
+.site-home:focus-visible { background: rgba(125, 252, 255, 0.14); color: #fff; }

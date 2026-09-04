@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createWorld, stepWorld } from '../src/world.js';
 import { hurtEnforcer, updateEnforcer } from '../src/enemy.js';
-import { STEP, ENFORCER, TILE } from '../src/tuning.js';
+import { STEP, ENFORCER, TILE, BLADES } from '../src/tuning.js';
 import { RULES } from '../src/combat.js';
 import { intent } from './helpers.mjs';
 
@@ -28,7 +28,7 @@ test('первый удар проходит и поднимает гарду', 
     const world = arena();
     const foe = world.enemies[0];
     assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'hit');
-    assert.equal(foe.hp, RULES.enemy.hp - 1);
+    assert.equal(foe.hp, RULES.enemy.hp - BLADES.damage);
     assert.equal(foe.state, 'guard');
 });
 
@@ -42,7 +42,7 @@ test('удар в гарду не ранит и продлевает её — д
     assert.ok(left < ENFORCER.guard, 'гарда не тикает');
 
     assert.equal(hurtEnforcer(foe, foe.body.x - 30), 'blocked');
-    assert.equal(foe.hp, RULES.enemy.hp - 1, 'блок пропустил урон');
+    assert.equal(foe.hp, RULES.enemy.hp - BLADES.damage, 'блок пропустил урон');
     assert.ok(foe.t > left, 'блок не продлился от удара');
 });
 
@@ -50,7 +50,7 @@ test('после гарды открывается окно: выждавший 
     const world = arena();
     const foe = world.enemies[0];
     hurtEnforcer(foe, foe.body.x - 30);
-    assert.equal(foe.hp, RULES.enemy.hp - 1);
+    assert.equal(foe.hp, RULES.enemy.hp - BLADES.damage);
 
     // Плюс кадры замирания от самого попадания — они тоже идут в счёт.
     tick(world, ENFORCER.guard + 0.2);

@@ -6,9 +6,9 @@
  * прыжок выходит выше, чем на 60, и настраивать его становится нечем.
  */
 
-import { STEP, VIEW, fitView } from './tuning.js';
+import { STEP, VIEW, fitView, BLADES, LOOP } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
-import { createCamera, updateCamera } from './camera.js';
+import { createCamera, updateCamera, snapCamera } from './camera.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createTouch, hasTouch } from './touch.js';
@@ -16,6 +16,8 @@ import { createAudio } from './audio.js';
 import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
+import { pulse } from './pulse.js';
+import { sceneFromSearch, stageImpact } from './showcase.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -93,14 +95,39 @@ function paintResults() {
         : '';
 }
 
+/** Экраны, которые существуют. `none` значит «идёт игра». */
+const SCREENS = new Set(['none', 'title', 'paused', 'won', 'lost']);
+
 function show(name) {
+    // Имя не из списка — это опечатка, и молчать о ней нельзя. Соседняя
+    // сессия потеряла прогон на `show('play')`: такого экрана нет, заставка
+    // осталась, часы мира стояли, и это выглядело как поломка игры. Тихий
+    // пропуск обходится дороже ошибки — ошибку видно.
+    if (!SCREENS.has(name)) {
+        throw new Error(`нет экрана «${name}». Есть: ${[...SCREENS].join(', ')}. Игру начинает NEON.play()`);
+    }
     screen = name;
     overlay.dataset.show = name;
     // Кнопки управления и меню не должны существовать одновременно:
     // на телефоне они лежат в одних и тех же местах экрана.
     document.body.classList.toggle('menu-open', name !== 'none');
+    document.body.classList.toggle('playing', name === 'none');
+    // Подтверждение выхода живёт до закрытия меню и не переживает его:
+    // взведённая кнопка, забытая на неделю, сработает как обычная.
+    for (const b of overlay.querySelectorAll('[data-action="home"]')) {
+        delete b.dataset.armed;
+        b.textContent = 'НА САЙТ';
+    }
     if (name !== 'none') touch?.release();
     if (name === 'won') {
+        pulse('level-clear', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+            loot: world.collected,
+            of: world.totalLoot,
+            score: world.score,
+        });
         const best = recordRun(levelId, {
             time: world.elapsed,
             attempts: world.attempts,
@@ -123,14 +150,41 @@ function show(name) {
         button.dataset.action = next ? 'next' : 'start';
     }
     if (name === 'lost') {
+        pulse('level-fail', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+            score: world.score,
+        });
         document.getElementById('lost-score').textContent = String(world.score);
     }
 }
 
+let started = 0;
+
 function restart() {
+    started += 1;
+    pulse('level-start', { level: levelId, run: started });
     world = createWorld(getLevel(levelId).rows);
     camera = createCamera(world);
     show('none');
+}
+
+/**
+ * Съёмочная сцена включается только явным адресом, не трогая обычный старт
+ * и не создавая в статистике ложную «начатую партию».
+ */
+function startShowcase() {
+    if (sceneFromSearch(location.search) !== 'impact') return false;
+    const scene = stageImpact(world, (sceneIntent) => stepWorld(world, sceneIntent, STEP));
+    snapCamera(camera, world);
+    // Кадры браузера не должны увести мир дальше от пойманного попадания.
+    driven = true;
+    // Сцена открывается без пользовательского жеста: звук здесь не нужен,
+    // а очередь событий иначе ждала бы первого случайного касания.
+    world.events.length = 0;
+    show('none');
+    return scene;
 }
 
 function drainSound() {
@@ -141,8 +195,34 @@ function drainSound() {
 let last = performance.now();
 let accumulator = 0;
 
+const swapButton = document.getElementById('tswap');
+
+/**
+ * Кнопка смены клинка на телефоне сама говорит, что сейчас в руке. На
+ * маленьком экране угол с иконками теряется, а палец уже лежит на кнопке —
+ * пусть подпись и будет главным указателем.
+ */
+function paintSwapButton(world) {
+    if (!swapButton) return;
+    const held = BLADES[world.player.blade];
+    if (!held) return;
+    if (swapButton.textContent !== held.name) swapButton.textContent = held.name;
+    swapButton.classList.toggle('is-frost', held.id === 'frost');
+}
+
+/**
+ * Когда мир двигают снаружи (отладочный пульт, съёмка сцены), собственный
+ * цикл обязан замолчать. Иначе время идёт ДВАЖДЫ: и от кадров, и от вызова,
+ * и расстановка, сделанная шагом раньше, к моменту удара уже неверна.
+ *
+ * Я этого не видел месяц потому, что моя панель предпросмотра скрыта и кадров
+ * в ней нет вовсе. У соседа с настоящим окном на тридцати кадрах сценарий
+ * считал, что прошло 0,05 с, а мир проживал 0,185 — втрое больше.
+ */
+let driven = false;
+
 function frame(now) {
-    const elapsed = Math.min(0.2, (now - last) / 1000);
+    const elapsed = Math.min(LOOP.maxElapsed, (now - last) / 1000);
     last = now;
 
     if (input.take('restart') && screen !== 'title') restart();
@@ -151,15 +231,26 @@ function frame(now) {
         else if (screen === 'paused') show('none');
     }
 
+    // Серия смертей — отдельная точка выхода: бросают именно здесь, а не
+    // на поражении. Отмечаем один раз за забег, чтобы не залить данные.
+    if (world.attempts >= 5 && !world.reported) {
+        world.reported = true;
+        pulse('level-stuck', {
+            level: levelId,
+            attempts: world.attempts,
+            seconds: Math.round(world.elapsed),
+        });
+    }
+
     if (screen === 'none') {
-        accumulator += elapsed;
+        accumulator += driven ? 0 : elapsed;
         let steps = 0;
-        while (accumulator >= STEP && steps < 8) {
+        while (accumulator >= STEP && steps < LOOP.maxSteps) {
             stepWorld(world, readIntent(input, touch, pointer), STEP);
             accumulator -= STEP;
             steps += 1;
         }
-        if (accumulator > STEP * 8) accumulator = 0;
+        if (accumulator > STEP * LOOP.maxSteps) accumulator = 0;
         if (reduceMotion) world.shake = 0;
         drainSound();
 
@@ -170,6 +261,7 @@ function frame(now) {
     updateCamera(camera, world, elapsed);
     resizeRenderer(renderer);
     render(renderer, world, camera);
+    paintSwapButton(world);
     requestAnimationFrame(frame);
 }
 
@@ -230,10 +322,36 @@ window.addEventListener('keydown', (event) => {
 // Обработчик один на все экраны: кнопки различает только цель. «Дальше»
 // ведёт на следующий уровень, остальные начинают заново.
 overlay.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action]');
+    // Не `button[...]`: выход — настоящая ссылка, чтобы работать и без
+    // скрипта. Подтверждение навешиваем поверх, а не вместо неё.
+    const button = event.target.closest('[data-action]');
     if (!button) return;
     audio.unlock();
-    if (button.dataset.action === 'next') {
+    const action = button.dataset.action;
+
+    if (action === 'resume') {
+        show('none');
+        canvas.focus();
+        return;
+    }
+
+    if (action === 'home') {
+        // Партия не начата — выпускаем сразу. Партия идёт — спрашиваем: у нас
+        // уже теряли прогресс одним касанием, и кнопка выхода стоит рядом с
+        // игровым полем, то есть под большим пальцем.
+        if (world.elapsed > 0 && !button.dataset.armed) {
+            event.preventDefault();
+            button.dataset.armed = '1';
+            button.textContent = 'ТОЧНО? ПРОГРЕСС ПРОПАДЁТ';
+            return;
+        }
+        // Второе касание — уходим. Ссылка увела бы и сама, но на заставке
+        // сюда попадают без подтверждения, и пусть путь будет один.
+        location.href = '/';
+        return;
+    }
+
+    if (action === 'next') {
         const next = getLevel(levelId).next;
         if (next) levelId = next;
     }
@@ -243,6 +361,12 @@ overlay.addEventListener('click', (event) => {
 
 window.addEventListener('blur', () => {
     touch?.release();
+    if (screen === 'none') show('paused');
+});
+
+// Пауза кнопкой — единственный путь в меню с телефона: клавиш там нет.
+document.getElementById('pause')?.addEventListener('click', () => {
+    audio.unlock();
     if (screen === 'none') show('paused');
 });
 
@@ -276,15 +400,40 @@ window.NEON = {
     renderer,
     input,
     touch,
+    audio,
     pointer,
     restart,
     show,
+    paintSwapButton,
+    /**
+     * Поставить камеру на героя мгновенно — для съёмки и замеров, где
+     * герой оказывается на месте присваиванием, а не приходит своим ходом.
+     */
+    snapCamera() { return snapCamera(camera, world); },
+    /** Замереть: мир двигается только через advance. */
+    hold() { driven = true; return driven; },
+    /** Вернуть ход собственному циклу игры. */
+    release() { driven = false; accumulator = 0; return driven; },
+    get driven() { return driven; },
+    /**
+     * Начать партию так же, как её начинает игрок кнопкой «НА КРЫШИ».
+     * Отдельное имя нужно потому, что `show` только переключает экраны и
+     * партию не заводит — на этом уже споткнулись.
+     */
+    play() {
+        audio.unlock();
+        restart();
+        return { level: levelId, time: world.time, blade: world.player.blade };
+    },
     /**
      * Прогон без кадров. Ввод берётся общим путём — вместе с сенсором и
      * мышью: хук, который строит намерение по-своему, проверяет не игру,
      * а сам себя.
      */
     advance(keys = {}, seconds = 1) {
+        // Первый же вызов забирает время себе: дальше мир движется только
+        // отсюда, кадры лишь рисуют. Вернуть ход обратно — NEON.release().
+        driven = true;
         const steps = Math.max(1, Math.round(seconds / STEP));
         for (let i = 0; i < steps; i += 1) {
             stepWorld(world, {
@@ -293,6 +442,11 @@ window.NEON = {
                 jumpDown: Boolean(keys.jumpDown) && i === 0,
                 attackDown: Boolean(keys.attackDown) && i === 0,
                 dashDown: Boolean(keys.dashDown) && i === 0,
+                // Смена клинка — тоже фронт: иначе зажатое в хуке нажатие
+                // перекидывало бы клинок каждый шаг, и прогон проверял бы
+                // не игру, а сам себя.
+                swapDown: Boolean(keys.swapDown) && i === 0,
+                bladeIndex: i === 0 ? (keys.bladeIndex ?? null) : null,
             }, STEP);
             world.events.length = 0;
             updateCamera(camera, world, STEP);
@@ -303,6 +457,7 @@ window.NEON = {
         return {
             x: Math.round(p.body.x), y: Math.round(p.body.y),
             state: p.state, hp: p.hp, score: world.score, phase: world.phase,
+            blade: p.blade,
             attempts: world.attempts, takedowns: world.takedowns,
         };
     },
@@ -316,7 +471,7 @@ window.NEON = {
  */
 try {
     paintResults();
-    show('title');
+    if (!startShowcase()) show('title');
     requestAnimationFrame(frame);
 
 } catch (error) {

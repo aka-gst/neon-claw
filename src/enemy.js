@@ -10,7 +10,7 @@
  * из двух таймеров, без единой строчки про «сложность».
  */
 
-import { ENFORCER } from './tuning.js';
+import { ENFORCER, BLADES } from './tuning.js';
 import { isOpen } from './combat.js';
 import { makeBody, moveX, moveY } from './physics.js';
 import { solidAtPoint, blocksSight } from './level.js';
@@ -19,6 +19,12 @@ export function createEnforcer(spawn, index = 0, rules = null) {
     const hp = rules?.hp ?? ENFORCER.hp;
     return {
         id: `enforcer-${index}`,
+        /** Стихия стража. Видна формой знака, а не цветом. */
+        element: spawn.element ?? 'heat',
+        /** След чужой стихии на теле и сколько он ещё держится. */
+        mark: null,
+        markT: 0,
+        lastRift: false,
         body: makeBody(spawn.x, spawn.y, ENFORCER.w, ENFORCER.h),
         facing: -1,
         hp,
@@ -31,6 +37,7 @@ export function createEnforcer(spawn, index = 0, rules = null) {
         /** Копится, пока страж поворачивается. Разворот не мгновенный. */
         turning: 0,
         guardReady: 0,
+        guardMax: ENFORCER.guard,
         hitstop: 0,
         flash: 0,
         anim: { walk: 0, guard: 0 },
@@ -63,6 +70,8 @@ export function reviveEnforcer(e, rules = null) {
     e.alert = 0;
     e.cooldown = 0;
     e.guardReady = 0;
+    e.mark = null;
+    e.markT = 0;
     e.hitstop = 0;
     e.flash = 0;
     e.facing = -1;
@@ -81,14 +90,19 @@ export function reviveEnforcer(e, rules = null) {
  */
 export function hurtEnforcer(e, fromX, opts = {}) {
     if (e.state === 'dead') return 'none';
-    const { parry = false, guard = 'meter', pierce = false } = opts;
+    const {
+        parry = false, guard = 'meter', pierce = false,
+        element = null, damage = BLADES.damage, factor = 1,
+    } = opts;
 
     // Гарда держит клинок, но не стрелу: пробивающий удар её игнорирует.
     // Без этого закрывшийся страж становился неуязвим для лука, и лук
     // переставал быть ответом на глухую оборону.
     if (e.state === 'guard' && !pierce) {
-        e.t = Math.min(ENFORCER.guard, e.t + ENFORCER.guardExtend);
-        e.anim.guard = 0.18;
+        e.t = Math.min(e.guardMax, e.t + ENFORCER.guardExtend);
+        // Звон подсвечивает ГАРДУ, а попадание — тело. Игрок должен видеть,
+        // что именно остановило клинок, а не гадать по цвету искр.
+        e.anim.guard = 0.3;
         return 'blocked';
     }
 
@@ -100,9 +114,22 @@ export function hurtEnforcer(e, fromX, opts = {}) {
         return 'blocked';
     }
 
-    e.hp -= 1;
-    e.flash = 0.18;
-    e.hitstop = 0.06;
+    // Раскол: две РАЗНЫЕ стихии по одной цели, пока держится след. Порядок
+    // не важен — правило одно и запоминается с первого раза: «ударь двумя
+    // разными — треснет». Платит раскол не столько уроном, сколько временем.
+    const rift = Boolean(element && e.mark && e.mark !== element && e.markT > 0);
+
+    // Смерть возвращается как 'dead' и затирает 'rift', поэтому факт
+    // раскола держим на самом страже — рендеру и звуку он нужен и тогда,
+    // когда этот же удар оказался последним.
+    e.lastRift = rift;
+    e.hp -= damage + (rift ? BLADES.riftBonus : 0);
+    e.flash = rift ? 0.3 : 0.18;
+    e.hitstop = rift ? 0.12 : 0.06;
+    if (element) {
+        e.mark = rift ? null : element;
+        e.markT = rift ? 0 : BLADES.markTime;
+    }
     // Удар разворачивает мгновенно: боль сама поворачивает голову.
     e.facing = Math.sign(fromX - e.body.x) || e.facing;
     e.turning = 0;
@@ -115,9 +142,29 @@ export function hurtEnforcer(e, fromX, opts = {}) {
         return 'dead';
     }
 
+    if (rift) {
+        // Треснувший страж не закрывается — вот вся награда за реакцию.
+        e.guardReady = BLADES.riftOpen;
+        e.state = 'chase';
+        e.alert = ENFORCER.memory;
+        return 'rift';
+    }
+
+    if (factor >= BLADES.counter) {
+        // Своей противоположностью гарда не поднимается вовсе: удары
+        // цепляются друг за друга, и правильный клинок читается по темпу,
+        // а не по циферке урона.
+        e.state = 'chase';
+        e.alert = ENFORCER.memory;
+        return 'hit';
+    }
+
     if (guard === 'meter' && e.guardReady <= 0) {
         e.state = 'guard';
-        e.t = ENFORCER.guard;
+        // Его же стихией — гарда встаёт сразу и держится дольше: клинок
+        // вязнет, и это чувствуется временем, а не половинкой урона.
+        e.guardMax = ENFORCER.guard * (factor <= BLADES.weak ? BLADES.guardSlam : 1);
+        e.t = e.guardMax;
         e.anim.guard = 0.2;
     } else {
         e.state = 'chase';
@@ -214,6 +261,8 @@ export function updateEnforcer(e, level, player, dt) {
     e.anim.guard = Math.max(0, e.anim.guard - dt);
     e.cooldown = Math.max(0, e.cooldown - dt);
     e.guardReady = Math.max(0, e.guardReady - dt);
+    e.markT = Math.max(0, e.markT - dt);
+    if (e.markT === 0) e.mark = null;
     e.alert = Math.max(0, e.alert - dt);
 
     let event = null;

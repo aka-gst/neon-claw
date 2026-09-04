@@ -8,7 +8,9 @@
 <meta property="og:title" content="NEON CLAW">
 <meta property="og:description" content="Неоновый платформер про кибер-ниндзя: паркур, катана и стражи, которые слышат шаги.">
 <meta property="og:image" content="./assets/key/social.png">
-<link rel="stylesheet" href="./styles/game.css">
+<script defer src="/pulse/script.js" data-website-id="de024048-c4c3-4639-bbdf-808c558f6d71"></script>
+<link rel="stylesheet" href="/game-menu.css">
+    <link rel="stylesheet" href="./styles/game.css">
 </head>
 <body>
 <main class="frame">
@@ -46,12 +48,20 @@
             </p>
             <p class="hint" id="best"></p>
 
-            <button type="button" data-action="start">НА КРЫШИ</button>
+            <div class="row">
+                <button type="button" data-action="start">НА КРЫШИ</button>
+                <a class="site-home" data-action="home" href="/">НА САЙТ</a>
+            </div>
         </section>
 
         <section data-screen="paused">
             <h2>ПАУЗА</h2>
             <p class="lead">Esc — обратно, R — сначала.</p>
+            <div class="row">
+                <button type="button" data-action="resume">ПРОДОЛЖИТЬ</button>
+                <button type="button" data-action="start">СНАЧАЛА</button>
+                <a class="site-home" data-action="home" href="/">НА САЙТ</a>
+            </div>
         </section>
 
         <section data-screen="won">
@@ -81,12 +91,24 @@
   обрезались бы её краем — измеримые, видимые по стилям и невидимые
   на экране.
 -->
+<!--
+  Пауза — единственная дверь наружу на телефоне: клавиш там нет, а жест
+  «назад» в полноэкранной вкладке не работает. Кнопка лежит над полем, и это
+  сознательно: сама по себе она ничего не обрывает, а выход за ней спрашивает
+  подтверждение. Обрывающую кнопку над полем вешать нельзя — так уже теряли
+  партию замахом пальца в угол.
+-->
+<button type="button" id="pause" aria-label="пауза">II</button>
+
 <div id="touch" hidden aria-hidden="true">
     <div class="tpad" data-touch="pad"><span>вести пальцем · чуть-чуть — красться</span></div>
     <div class="tacts">
         <div class="tbtn" data-touch="dash">рывок</div>
         <div class="tbtn" data-touch="attack">катана</div>
         <div class="tbtn" data-touch="bow">лук</div>
+        <!-- Клинок на телефоне меняется одной кнопкой: подпись на ней
+             сама показывает, что сейчас в руке. -->
+        <div class="tbtn" data-touch="swap" id="tswap">клинок</div>
         <div class="tbtn tbig" data-touch="jump">прыжок</div>
     </div>
 </div>

@@ -2,7 +2,7 @@
 
 export const NO_INPUT = {
     left: false, right: false, up: false, down: false,
-    jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false, bowHeld: false, aimX: 0, aimY: 0,
+    jumpHeld: false, jumpDown: false, attackDown: false, dashDown: false, bowHeld: false, aimX: 0, aimY: 0, swapDown: false, bladeIndex: null,
 };
 
 export const intent = (over = {}) => ({ ...NO_INPUT, ...over });
