@@ -9,6 +9,7 @@
 import { STEP, VIEW, fitView, BLADES, LOOP } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera, snapCamera } from './camera.js';
+import { footingAt, solidAtPoint } from './level.js';
 import { createRenderer, render, resizeRenderer } from './render.js';
 import { createInput, readIntent } from './input.js';
 import { createTouch, hasTouch } from './touch.js';
@@ -410,6 +411,17 @@ window.NEON = {
      * герой оказывается на месте присваиванием, а не приходит своим ходом.
      */
     snapCamera() { return snapCamera(camera, world); },
+    /**
+     * Мерки опоры для тех, кто водит игру автоматом.
+     *
+     * Вынесены в пульт по просьбе приёмки: раньше их доставали прямым
+     * импортом модуля, то есть надо было знать устройство. Разница между
+     * ними — та самая, из-за которой водитель может прыгать на ровном
+     * месте: `footing` считает опорой и односторонний помост, `solid` —
+     * только камень. На нашей карте они расходятся ровно в девяти клетках.
+     */
+    footing(x, y) { return footingAt(world.level, x, y); },
+    solid(x, y) { return solidAtPoint(world.level, x, y); },
     /** Замереть: мир двигается только через advance. */
     hold() { driven = true; return driven; },
     /** Вернуть ход собственному циклу игры. */
