@@ -6,7 +6,7 @@
  * прыжок выходит выше, чем на 60, и настраивать его становится нечем.
  */
 
-import { STEP, VIEW, fitView, BLADES, LOOP } from './tuning.js';
+import { STEP, VIEW, fitView, BLADES, LOOP, ENFORCER } from './tuning.js';
 import { createWorld, stepWorld } from './world.js';
 import { createCamera, updateCamera, snapCamera } from './camera.js';
 import { footingAt, solidAtPoint } from './level.js';
@@ -175,6 +175,26 @@ function restart() {
  * Съёмочная сцена включается только явным адресом, не трогая обычный старт
  * и не создавая в статистике ложную «начатую партию».
  */
+/**
+ * Старое зрение по флагу в адресе: `?blind=200` возвращает стражам
+ * всенаправленный взгляд, каким он был до 6 сентября.
+ *
+ * Нужен для честного сравнения. Двумя разными сборками мерить нельзя:
+ * между ними может уехать что угодно ещё, и разницу мы припишем конусу.
+ * Один код, один водитель, отличается только флаг.
+ */
+function applySightFlag(search) {
+    const raw = new URLSearchParams(search).get('blind');
+    if (raw === null) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+        console.warn(`NEON: ?blind=${raw} — не число, флаг не применён`);
+        return null;
+    }
+    ENFORCER.blind = value;
+    return value;
+}
+
 function startShowcase() {
     const name = sceneFromSearch(location.search);
     if (!name) return false;
@@ -223,6 +243,8 @@ function paintSwapButton(world) {
  * считал, что прошло 0,05 с, а мир проживал 0,185 — втрое больше.
  */
 let driven = false;
+
+applySightFlag(location.search);
 
 function frame(now) {
     const elapsed = Math.min(LOOP.maxElapsed, (now - last) / 1000);
@@ -411,6 +433,9 @@ window.NEON = {
      * переменную через перезапуск.
      */
     get enemies() { return world.enemies; },
+    /** Слепая зона за спиной. 200 и больше — старое всенаправленное зрение. */
+    get blind() { return ENFORCER.blind; },
+    set blind(v) { ENFORCER.blind = Number(v); },
     get camera() { return camera; },
     renderer,
     input,
