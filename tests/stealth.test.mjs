@@ -146,3 +146,83 @@ test('снятие работает и на ПАТРУЛИРУЮЩЕМ стра�
     assert.equal(foe.state, 'dead', 'ходящий страж не убит');
     assert.ok(world.takedowns > 0, 'на патрулирующем страже снятие не засчиталось');
 });
+
+test('удар в спину убивает разом при ПОЛНОМ здоровье', () => {
+    // Решение владельца: снятие как в стелсе, а не добивание раненых.
+    // До этого страж с шестью здоровья переживал удар в спину (снималось
+    // четыре), разворачивался, и тихое снятие не случалось никогда —
+    // счётчик на экране победы стоял на нуле у всех. Здоровье здесь
+    // НЕ трогаем: вся прежняя проверка шла при `foe.hp = 4`, то есть в
+    // единственном режиме, где один удар добивал.
+    const world = createWorld(DOCKS);
+    const p = world.player;
+    const foe = world.enemies[2];
+    foe.state = 'patrol';
+    foe.alert = 0;
+    foe.facing = 1;              // смотрит прочь
+    foe.body.vx = 0;
+    const полное = foe.hp;
+    p.blade = 'frost';
+    p.body.x = foe.body.x - 24;
+    p.body.y = foe.body.y;
+    p.body.onGround = true;
+    p.facing = 1;
+
+    for (let i = 0; i < 90; i += 1) {
+        stepWorld(world, intent({ attackDown: i === 0 }), STEP);
+        if (foe.state === 'dead') break;
+    }
+
+    assert.ok(полное > 4, `у стража ${полное} здоровья — проверка потеряла смысл`);
+    assert.equal(foe.state, 'dead', 'удар в спину не убил при полном здоровье');
+    assert.equal(world.takedowns, 1, 'снятие не засчиталось');
+});
+
+test('удар в лицо при полном здоровье НЕ убивает — иначе это не снятие', () => {
+    // Отрицательный контроль: без него проверка выше зеленела бы на любом
+    // ударе, и «снятие» перестало бы что-либо означать.
+    const world = createWorld(DOCKS);
+    const p = world.player;
+    const foe = world.enemies[2];
+    foe.facing = -1;             // смотрит на игрока
+    foe.body.vx = 0;
+    p.blade = 'frost';
+    p.body.x = foe.body.x - 24;
+    p.body.y = foe.body.y;
+    p.body.onGround = true;
+    p.facing = 1;
+
+    for (let i = 0; i < 90; i += 1) {
+        stepWorld(world, intent({ attackDown: i === 0 }), STEP);
+        if (foe.state === 'dead') break;
+    }
+
+    assert.notEqual(foe.state, 'dead', 'удар в лицо убил с одного — снятие обесценилось');
+    assert.equal(world.takedowns, 0, 'удар в лицо зря засчитан снятием');
+});
+
+test('заметивший страж снятию не поддаётся, даже пока доворачивается', () => {
+    // Без этой проверки приём работал одинаково и при всенаправленном
+    // зрении: заметивший страж доворачивается 0,26 с, и удар в это окно
+    // засчитывался снятием. Тогда конус переставал что-либо значить —
+    // замер показал 20 снятий и с конусом, и без него.
+    const world = createWorld(DOCKS);
+    const p = world.player;
+    const foe = world.enemies[2];
+    foe.state = 'chase';          // уже заметил
+    foe.alert = 4;
+    foe.facing = 1;               // но ещё повёрнут прочь
+    foe.body.vx = 0;
+    p.blade = 'frost';
+    p.body.x = foe.body.x - 24;
+    p.body.y = foe.body.y;
+    p.body.onGround = true;
+    p.facing = 1;
+
+    for (let i = 0; i < 90; i += 1) {
+        stepWorld(world, intent({ attackDown: i === 0 }), STEP);
+        if (foe.state === 'dead') break;
+    }
+
+    assert.equal(world.takedowns, 0, 'снятие засчитано на страже, который знает о тебе');
+});

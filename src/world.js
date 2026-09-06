@@ -135,6 +135,7 @@ function playerAttacks(world) {
             element: p.blade,
             damage: BLADES.damage * factor,
             factor,
+            fromBehind: wasTurnedAway,
         });
         const mid = { x: (blade.x + blade.w / 2 + e.body.x) / 2, y: e.body.y - e.body.h / 2 };
 

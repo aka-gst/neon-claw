@@ -92,7 +92,7 @@ export function hurtEnforcer(e, fromX, opts = {}) {
     if (e.state === 'dead') return 'none';
     const {
         parry = false, guard = 'meter', pierce = false,
-        element = null, damage = BLADES.damage, factor = 1,
+        element = null, damage = BLADES.damage, factor = 1, fromBehind = false,
     } = opts;
 
     // Гарда держит клинок, но не стрелу: пробивающий удар её игнорирует.
@@ -112,6 +112,29 @@ export function hurtEnforcer(e, fromX, opts = {}) {
         e.anim.guard = 0.2;
         e.facing = Math.sign(fromX - e.body.x) || e.facing;
         return 'blocked';
+    }
+
+    // Снятие со спины: удар вне поля зрения убивает разом, при любом
+    // здоровье. Решение владельца: «как в стелсе», а не «добивание
+    // раненых». До этого страж с полными шестью здоровья переживал удар в
+    // спину (снималось четыре), разворачивался, и тихое снятие не
+    // случалось никогда — счётчик на экране победы стоял на нуле у всех.
+    // Не всякий поворот спиной годится: заметивший страж доворачивается
+    // 0,26 с, и удар в этом окне не «снятие», а обычное попадание в
+    // разворачивающегося. Снятие — это удар по тому, кто НЕ ЗНАЕТ о тебе.
+    // Замер показал, зачем это нужно: без проверки осознания приём работал
+    // одинаково и при всенаправленном зрении, то есть конус переставал
+    // что-либо значить.
+    if (fromBehind && !isAware(e)) {
+        e.hp = 0;
+        e.flash = 0.3;
+        e.hitstop = 0.12;
+        e.lastRift = false;
+        e.facing = Math.sign(fromX - e.body.x) || e.facing;
+        e.state = 'dead';
+        e.t = 0;
+        e.body.vy = -180;
+        return 'dead';
     }
 
     // Раскол: две РАЗНЫЕ стихии по одной цели, пока держится след. Порядок
