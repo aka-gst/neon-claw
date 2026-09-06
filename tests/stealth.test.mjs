@@ -103,3 +103,46 @@ test('удар в лицо снятием НЕ считается', () => {
     assert.equal(foe.state, 'dead', 'страж не убит');
     assert.equal(world.takedowns, 0, 'удар в лицо зря засчитан снятием');
 });
+
+test('снятие работает и на ПАТРУЛИРУЮЩЕМ страже, а не только на стоящем', () => {
+    // Дыра, найденная приёмкой: все проверки выше обездвиживают стража
+    // (`foe.body.vx = 0`), а в игре они ходят. Проверено доказывало, что
+    // приём есть на стоящем — то есть в тестах, а не в игре.
+    //
+    // Замер по десять заходов на дистанцию: с 150 и 100 пикселей снятие
+    // проходит 10 из 10, с 200 — 4 из 10 (страж успевает довернуться в
+    // патруле). Здесь берём 150 как рабочую дистанцию.
+    const world = createWorld(DOCKS);
+    const p = world.player;
+    const foe = world.enemies[2];
+    foe.hp = 4;
+    foe.state = 'patrol';
+    foe.alert = 0;
+    foe.facing = 1;              // смотрит прочь; скорость НЕ обнуляем
+    p.blade = 'frost';
+    p.body.x = foe.body.x - 150;
+    p.body.y = foe.body.y;
+    p.body.onGround = true;
+    p.facing = 1;
+
+    const окно = [ENFORCER.blind, SWORD.reach - 4];
+    for (let i = 0; i < 900; i += 1) {
+        const d = Math.abs(foe.body.x - p.body.x);
+        // «Сзади» считается от стража к игроку. Обратный порядок даёт
+        // всегда-ложь, и замер молча перестаёт видеть окно: на этом я
+        // потерял прогон и чуть не объявил, что приёма в патруле нет.
+        const сзади = Math.sign(p.body.x - foe.body.x) !== foe.facing;
+        const вОкне = сзади && d >= окно[0] && d <= окно[1];
+        if (вОкне && p.attack.phase === 'none') {
+            stepWorld(world, intent({ attackDown: true }), STEP);
+        } else if (p.attack.phase !== 'none') {
+            stepWorld(world, intent(), STEP);
+        } else {
+            stepWorld(world, intent({ right: true }), STEP);
+        }
+        if (foe.state === 'dead') break;
+    }
+
+    assert.equal(foe.state, 'dead', 'ходящий страж не убит');
+    assert.ok(world.takedowns > 0, 'на патрулирующем страже снятие не засчиталось');
+});
