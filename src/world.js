@@ -34,6 +34,8 @@ export function createWorld(rows) {
         /** Очередь звуков за шаг. Мир не знает, как они звучат. */
         events: [],
         score: 0,
+        /** Сколько стражей снято со спины: они не успели довернуться. */
+        takedowns: 0,
         collected: 0,
         totalLoot: level.loot.length,
         phase: 'play',
@@ -121,6 +123,11 @@ function playerAttacks(world) {
 
         p.attack.hits.add(e.id);
         // Множитель стихии решает и урон, и судьбу гарды — оба разом.
+        // Куда страж смотрел ДО удара: `hurtEnforcer` разворачивает его
+        // мгновенно — боль сама поворачивает голову, — и после вызова
+        // спросить об этом уже нельзя.
+        const wasTurnedAway = Math.sign(p.body.x - e.body.x) !== e.facing;
+
         const factor = elementFactor(p.blade, e.element);
         const result = hurtEnforcer(e, p.body.x, {
             parry: RULES.enemy.parry,
@@ -175,6 +182,12 @@ function playerAttacks(world) {
             world.shake = Math.max(world.shake, result === 'dead' ? 7 : 4);
             if (!p.body.onGround) p.body.vy = Math.min(p.body.vy, -SWORD.airLift);
             if (result === 'dead') {
+                // Снятие со спины. Отдельной механики для него нет и не
+                // задумано: клинок один и тот же. Считается сам заход —
+                // страж не успел довернуться (на это у него 0,26 с), и
+                // удар пришёлся в спину. Раньше счётчик читали на экране
+                // победы, а не выставлял его никто: там стояло «undefined».
+                if (wasTurnedAway) world.takedowns += 1;
                 world.score += 100;
                 spark(world, e.body.x, e.body.y - e.body.h / 2, 22, '#ffc857', 300, 0.6);
             }
