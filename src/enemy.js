@@ -219,7 +219,16 @@ function sees(e, player, level) {
     if (player.state === 'dead') return false;
     const dx = player.body.x - e.body.x;
     const dy = player.body.y - e.body.y;
-    if (Math.abs(dx) >= ENFORCER.sight || Math.abs(dy) >= ENFORCER.sightRise) return false;
+    if (Math.abs(dy) >= ENFORCER.sightRise) return false;
+
+    // Страж смотрит в ту сторону, куда повёрнут. Сзади он видит только
+    // вплотную — по касанию, а не за двести пикселей, как было раньше.
+    // Отсюда и берётся снятие со спины: между `blind` и досягаемостью
+    // клинка остаётся окно, в котором подошедший ещё не замечен.
+    const behind = Math.sign(dx) !== e.facing && dx !== 0;
+    const range = behind ? ENFORCER.blind : ENFORCER.sight;
+    if (Math.abs(dx) >= range) return false;
+
     return !blocked(level, e.body.x, e.body.y - e.body.h * 0.78,
         player.body.x, player.body.y - player.body.h * 0.5);
 }

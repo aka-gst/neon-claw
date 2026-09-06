@@ -18,7 +18,7 @@ import { loadTileset, loadBackdrop } from './assets.js';
 import { LEVELS, DEFAULT_LEVEL, getLevel } from './levels.js';
 import { recordRun, resultFor, formatTime } from './results.js';
 import { pulse } from './pulse.js';
-import { sceneFromSearch, stageImpact } from './showcase.js';
+import { sceneFromSearch, stageImpact, stageBackstab } from './showcase.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -176,8 +176,10 @@ function restart() {
  * и не создавая в статистике ложную «начатую партию».
  */
 function startShowcase() {
-    if (sceneFromSearch(location.search) !== 'impact') return false;
-    const scene = stageImpact(world, (sceneIntent) => stepWorld(world, sceneIntent, STEP));
+    const name = sceneFromSearch(location.search);
+    if (!name) return false;
+    const step = (sceneIntent) => stepWorld(world, sceneIntent, STEP);
+    const scene = name === 'backstab' ? stageBackstab(world, step) : stageImpact(world, step);
     snapCamera(camera, world);
     // Кадры браузера не должны увести мир дальше от пойманного попадания.
     driven = true;
@@ -420,6 +422,15 @@ window.NEON = {
      * месте: `footing` считает опорой и односторонний помост, `solid` —
      * только камень. На нашей карте они расходятся ровно в девяти клетках.
      */
+    /** Поставить сцену без перезагрузки: 'impact' или 'backstab'. */
+    scene(name) {
+        const step = (sceneIntent) => stepWorld(world, sceneIntent, STEP);
+        const out = name === 'backstab' ? stageBackstab(world, step) : stageImpact(world, step);
+        snapCamera(camera, world);
+        driven = true;
+        show('none');
+        return out;
+    },
     footing(x, y) { return footingAt(world.level, x, y); },
     solid(x, y) { return solidAtPoint(world.level, x, y); },
     /** Замереть: мир двигается только через advance. */
