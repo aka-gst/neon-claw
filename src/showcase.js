@@ -119,13 +119,17 @@ function pickTarget(world) {
  * обычное добивание в лицо под видом захода за спину — то есть пообещает
  * то, чего в кадре нет.
  */
-export function stageBackstab(world, step) {
+export function stageBackstab(world, step, { пошагово = false } = {}) {
     const выбор = pickTarget(world);
     if (!выбор) throw new Error('сцене снятия нужен страж, к спине которого есть проход');
     const { foe, side } = выбор;
 
     const p = world.player;
-    foe.hp = Math.min(foe.hp, BLADES.damage * BLADES.counter);
+    // Здоровье НЕ трогаем. Раньше сцена срезала его до четырёх, чтобы
+    // верный клинок добивал с одного удара, — иначе снятия не выходило.
+    // С 7 сентября удар в спину убивает разом при любом здоровье, и
+    // ослаблять стража значит показывать в кадре неправду: ровно то, за
+    // что оператор корил себя за вчерашнюю петлю.
     foe.state = 'patrol';
     foe.alert = 0;
     foe.facing = side;          // смотрит прочь от того, откуда идёт герой
@@ -149,6 +153,24 @@ export function stageBackstab(world, step) {
     world.shake = 0;
     world.notice = null;        // подсказки лезут поверх боя и портят кадр
     const снятийДо = world.takedowns;
+
+    // Пошаговый режим для съёмки: сцена только РАССТАВЛЯЕТ и отдаёт план,
+    // а заход и удар оператор ведёт сам, снимая кадры. Обычный режим
+    // отыгрывает всё до возврата, и процесса в нём не видно — а Сергей
+    // просит видеть, как герой подходит и убивает.
+    if (пошагово) {
+        return {
+            name: 'backstab',
+            пошагово: true,
+            цель: foe.id,
+            сторона: side,
+            куда: side > 0 ? 'right' : 'left',
+            разрыв: () => Math.round(Math.abs(foe.body.x - p.body.x)),
+            бить: () => Math.abs(foe.body.x - p.body.x) <= SNEAK_GAP,
+            снялось: () => world.takedowns > снятийДо,
+            подсказка: `держать {${side > 0 ? 'right' : 'left'}: true}, бить при разрыве ≤ ${SNEAK_GAP}`,
+        };
+    }
 
     const вперёд = side > 0 ? { right: true } : { left: true };
     const дальше = () => Math.abs(foe.body.x - p.body.x);

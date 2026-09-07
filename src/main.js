@@ -460,9 +460,9 @@ window.NEON = {
      * только камень. На нашей карте они расходятся ровно в девяти клетках.
      */
     /** Поставить сцену без перезагрузки: 'impact' или 'backstab'. */
-    scene(name) {
+    scene(name, opts = {}) {
         const step = (sceneIntent) => stepWorld(world, sceneIntent, STEP);
-        const out = name === 'backstab' ? stageBackstab(world, step) : stageImpact(world, step);
+        const out = name === 'backstab' ? stageBackstab(world, step, opts) : stageImpact(world, step);
         snapCamera(camera, world);
         driven = true;
         show('none');
